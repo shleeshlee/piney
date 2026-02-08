@@ -127,7 +127,7 @@ fn copy_to_target(app: &AppHandle, src: &std::path::Path, target: &str) -> Resul
 
             let android_fs = app.android_fs();
             let src_uri = FileUri::from_path(src);
-            let dest_uri = FileUri::new(target.to_string());
+            let dest_uri = FileUri::from_path(std::path::Path::new(&target));
 
             android_fs
                 .copy(&src_uri, &dest_uri)
