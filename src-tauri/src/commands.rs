@@ -132,13 +132,7 @@ fn copy_to_target(app: &AppHandle, src: &std::path::Path, target: &str) -> Resul
     // 使用标准文件复制
     std::fs::copy(src, target).map_err(|e| format!("复制文件失败: {}", e))?;
 
-    // Android：触发 MediaScanner 扫描公共存储文件
-    #[cfg(target_os = "android")]
-    {
-        use tauri_plugin_android_fs::AndroidFsExt;
-        let android_fs = app.android_fs();
-        let _ = android_fs.scan_public_file(target_path);
-    }
+    // 注意：Android 公共存储文件会被 MediaScanner 自动索引
 
     Ok(())
 }
@@ -207,7 +201,6 @@ pub async fn write_to_android_public(
     #[cfg(target_os = "android")]
     {
         use std::path::Path;
-        use tauri_plugin_android_fs::AndroidFsExt;
 
         // 确保父目录存在
         let path = Path::new(&target_path);
@@ -220,9 +213,7 @@ pub async fn write_to_android_public(
         // 写入文件
         std::fs::write(&target_path, &data).map_err(|e| format!("写入失败: {}", e))?;
 
-        // 触发 MediaScanner 扫描，更新文件大小显示
-        let android_fs = app.android_fs();
-        let _ = android_fs.scan_public_file(path);
+        // 注意：Android 公共存储文件会被 MediaScanner 自动索引
     }
 
     #[cfg(not(target_os = "android"))]
