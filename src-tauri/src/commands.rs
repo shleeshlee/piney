@@ -127,7 +127,12 @@ fn copy_to_target(app: &AppHandle, src: &std::path::Path, target: &str) -> Resul
 
             let android_fs = app.android_fs();
             let src_uri = FileUri::from_path(src);
-            let dest_uri = FileUri::from_path(std::path::Path::new(&target));
+
+            // 直接构造 FileUri，避免 from_path 自动添加 file:// 前缀
+            let dest_uri = FileUri {
+                uri: target.to_string(),
+                document_top_tree_uri: None,
+            };
 
             android_fs
                 .copy(&src_uri, &dest_uri)
