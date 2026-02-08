@@ -26,6 +26,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::download_large_file,
             commands::download_with_progress,
+            commands::write_to_content_uri,
             commands::restart_server
         ])
         .setup(move |_app| {

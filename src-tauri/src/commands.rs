@@ -203,6 +203,39 @@ pub async fn download_large_file(
     Ok(data)
 }
 
+/// 写入数据到目标路径（支持 Android content:// URI）
+/// 用于前端直接写入 Blob 内容，绕过 tauri-plugin-fs 的限制
+#[command]
+#[allow(unused_variables)]
+pub async fn write_to_content_uri(
+    app: AppHandle,
+    target_path: String,
+    data: Vec<u8>,
+) -> Result<(), String> {
+    if target_path.starts_with("content://") {
+        #[cfg(target_os = "android")]
+        {
+            use tauri_plugin_android_fs::{AndroidFsExt, FileUri};
+            let android_fs = app.android_fs();
+            let dest_uri = FileUri {
+                uri: target_path,
+                document_top_tree_uri: None,
+            };
+            android_fs
+                .write(&dest_uri, &data)
+                .map_err(|e| format!("写入失败: {}", e))?;
+        }
+
+        #[cfg(not(target_os = "android"))]
+        {
+            return Err("不支持的路径格式".to_string());
+        }
+    } else {
+        std::fs::write(&target_path, &data).map_err(|e| format!("写入失败: {}", e))?;
+    }
+    Ok(())
+}
+
 #[command]
 pub async fn restart_server(
     state: tauri::State<'_, std::sync::Arc<crate::ServerControl>>,

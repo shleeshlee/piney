@@ -45,14 +45,30 @@ export async function downloadFile(options: DownloadOptions) {
 
             // 2. 写入文件
             if (content) {
-                // 处理内存内容（小文件直接写入）
+                // 处理内存内容
+                let dataBytes: Uint8Array;
                 if (typeof content === 'string') {
-                    await writeTextFile(filePath, content);
+                    dataBytes = new TextEncoder().encode(content);
                 } else if (content instanceof Blob) {
                     const buffer = await content.arrayBuffer();
-                    await writeFile(filePath, new Uint8Array(buffer));
-                } else if (content instanceof Uint8Array) {
-                    await writeFile(filePath, content);
+                    dataBytes = new Uint8Array(buffer);
+                } else {
+                    dataBytes = content;
+                }
+
+                // Android content:// URI 需要使用专用命令
+                if (filePath.startsWith('content://')) {
+                    await invoke('write_to_content_uri', {
+                        targetPath: filePath,
+                        data: Array.from(dataBytes)
+                    });
+                } else {
+                    // 非 Android 或普通路径使用 plugin-fs
+                    if (typeof content === 'string') {
+                        await writeTextFile(filePath, content);
+                    } else {
+                        await writeFile(filePath, dataBytes);
+                    }
                 }
             } else if (url) {
                 // 从 fetchOptions 中提取 headers、method、body
@@ -139,8 +155,6 @@ async function downloadSimple(
     method?: string,
     body?: string
 ): Promise<void> {
-    // 使用顶层静态导入的 invoke
-
     // 调用 Rust 命令下载，返回字节数组
     const data = await invoke<number[]>('download_large_file', {
         url,
@@ -149,8 +163,15 @@ async function downloadSimple(
         body
     });
 
-    // 写入目标路径
-    await writeFile(targetPath, new Uint8Array(data));
+    // 写入目标路径（支持 Android content:// URI）
+    if (targetPath.startsWith('content://')) {
+        await invoke('write_to_content_uri', {
+            targetPath,
+            data
+        });
+    } else {
+        await writeFile(targetPath, new Uint8Array(data));
+    }
 }
 
 /**
