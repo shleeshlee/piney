@@ -26,7 +26,7 @@
 
     async function handleExport() {
         if ($backupExport.isExporting) return;
-        
+
         const token = localStorage.getItem("auth_token");
         if (!token) {
             toast.error("未登录");
@@ -41,9 +41,9 @@
             return;
         }
 
-        // Tauri 环境：使用流式下载 + 进度显示
+        // Tauri 环境：使用流式下载（打包时间比下载长，不显示进度）
         backupExport.startExport();
-        
+
         try {
             await downloadFile({
                 filename: "piney_backup.piney",
@@ -51,14 +51,10 @@
                 type: "application/octet-stream",
                 fetchOptions: {
                     headers: { Authorization: `Bearer ${token}` }
-                },
-                onProgress: (percent, downloaded, total) => {
-                    backupExport.setProgress(downloaded, total, percent);
                 }
             });
             
             backupExport.completeExport();
-            
         } catch(e) {
             console.error(e);
             backupExport.failExport(String(e));

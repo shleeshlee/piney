@@ -1,15 +1,8 @@
 
 import { isTauri, invoke } from '@tauri-apps/api/core';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { save } from '@tauri-apps/plugin-dialog';
-import { writeTextFile, writeFile, copyFile, remove } from '@tauri-apps/plugin-fs';
+import { writeTextFile, writeFile } from '@tauri-apps/plugin-fs';
 import { toast } from 'svelte-sonner';
-
-interface DownloadProgress {
-    downloaded: number;
-    total: number;
-    percent: number;
-}
 
 interface DownloadOptions {
     filename: string;
@@ -62,15 +55,17 @@ export async function downloadFile(options: DownloadOptions) {
                     await writeFile(filePath, content);
                 }
             } else if (url) {
-                // 从 fetchOptions 中提取 headers
+                // 从 fetchOptions 中提取 headers、method、body
                 const headers = extractHeaders(fetchOptions);
+                const method = fetchOptions?.method as string | undefined;
+                const body = typeof fetchOptions?.body === 'string' ? fetchOptions.body : undefined;
 
                 if (useStreaming) {
                     // 流式下载（推荐用于大文件）
-                    await downloadWithStreaming(url, headers, filePath, onProgress);
+                    await downloadWithStreaming(url, headers, filePath, method, body);
                 } else {
                     // 简单下载（兼容小文件）
-                    await downloadSimple(url, headers, filePath);
+                    await downloadSimple(url, headers, filePath, method, body);
                 }
             }
 
@@ -113,53 +108,25 @@ function extractHeaders(fetchOptions?: RequestInit): Record<string, string> | un
 }
 
 /**
- * 流式下载（大文件，带进度）
- * 使用 Rust 后端流式写入临时文件，然后复制到目标路径
- * 兼容 Android content:// URI
+ * 流式下载（大文件）
+ * Rust 后端流式下载到临时文件，然后复制到目标路径
+ * 支持 Android content:// URI（由 Rust 端处理）
+ * 支持 POST/PUT 等带请求体的方法
  */
 async function downloadWithStreaming(
     url: string,
     headers: Record<string, string> | undefined,
     targetPath: string,
-    onProgress?: (percent: number, downloaded: number, total: number) => void
+    method?: string,
+    body?: string
 ): Promise<void> {
-    // 使用顶层静态导入的 invoke 和 listen
-
-    // 监听进度事件
-    let unlisten: UnlistenFn | undefined;
-    if (onProgress) {
-        unlisten = await listen<DownloadProgress>('download-progress', (event) => {
-            onProgress(event.payload.percent, event.payload.downloaded, event.payload.total);
-        });
-    }
-
-    let tempPath: string | null = null;
-
-    try {
-        // 调用 Rust 命令流式下载到临时文件
-        tempPath = await invoke<string>('download_with_progress', {
-            url,
-            headers
-        });
-
-        // 复制到用户选择的目标路径（兼容 Android content:// URI）
-        await copyFile(tempPath, targetPath);
-
-    } finally {
-        // 清理：停止监听
-        if (unlisten) {
-            unlisten();
-        }
-
-        // 清理：删除临时文件
-        if (tempPath) {
-            try {
-                await remove(tempPath);
-            } catch (e) {
-                console.warn("Failed to remove temp file:", e);
-            }
-        }
-    }
+    await invoke<void>('download_with_progress', {
+        url,
+        headers,
+        targetPath,
+        method,
+        body
+    });
 }
 
 /**
@@ -168,14 +135,18 @@ async function downloadWithStreaming(
 async function downloadSimple(
     url: string,
     headers: Record<string, string> | undefined,
-    targetPath: string
+    targetPath: string,
+    method?: string,
+    body?: string
 ): Promise<void> {
     // 使用顶层静态导入的 invoke
 
     // 调用 Rust 命令下载，返回字节数组
     const data = await invoke<number[]>('download_large_file', {
         url,
-        headers
+        headers,
+        method,
+        body
     });
 
     // 写入目标路径

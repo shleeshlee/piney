@@ -1,39 +1,44 @@
 use futures_util::StreamExt;
-use serde::Serialize;
 use std::collections::HashMap;
 use std::io::Write;
-use tauri::{command, AppHandle, Emitter, Manager};
+use tauri::{command, AppHandle, Manager};
 use uuid::Uuid;
-
-/// 下载进度事件数据
-#[derive(Clone, Serialize)]
-pub struct DownloadProgress {
-    /// 已下载字节数
-    pub downloaded: u64,
-    /// 总字节数 (0 表示未知)
-    pub total: u64,
-    /// 百分比 (0-100, 如果 total 未知则为 0)
-    pub percent: u8,
-}
 
 /// 带进度的大文件下载命令
 ///
-/// 流式下载到临时文件，通过 Tauri 事件发送进度，返回临时文件路径
-/// 前端需要使用 Tauri fs 插件的 copyFile 复制到目标路径（兼容 Android content:// URI）
+/// 流式下载到临时文件，通过 Tauri 事件发送进度
+/// 然后复制到目标路径（支持 Android content:// URI）
+/// 最后删除临时文件
 #[command]
 pub async fn download_with_progress(
     app: AppHandle,
     url: String,
     headers: Option<HashMap<String, String>>,
-) -> Result<String, String> {
+    target_path: String,
+    method: Option<String>,
+    body: Option<String>,
+) -> Result<(), String> {
     let client = reqwest::Client::new();
-    let mut request = client.get(&url);
+
+    // 根据 method 构建请求（默认 GET）
+    let method_str = method.as_deref().unwrap_or("GET");
+    let mut request = match method_str.to_uppercase().as_str() {
+        "POST" => client.post(&url),
+        "PUT" => client.put(&url),
+        "DELETE" => client.delete(&url),
+        _ => client.get(&url),
+    };
 
     // 添加自定义 headers（认证等）
     if let Some(hdrs) = headers {
         for (key, value) in hdrs {
             request = request.header(&key, &value);
         }
+    }
+
+    // 添加请求体（用于 POST 等）
+    if let Some(body_str) = body {
+        request = request.body(body_str);
     }
 
     let response = request
@@ -44,9 +49,6 @@ pub async fn download_with_progress(
     if !response.status().is_success() {
         return Err(format!("服务器返回错误: {}", response.status()));
     }
-
-    // 获取 Content-Length（如果有）
-    let total_size = response.content_length().unwrap_or(0);
 
     // 创建临时文件路径
     let temp_dir = app
@@ -74,9 +76,7 @@ pub async fn download_with_progress(
     })?;
 
     // 流式读取并写入
-    let mut downloaded: u64 = 0;
     let mut stream = response.bytes_stream();
-    let mut last_percent: u8 = 0;
 
     let result: Result<(), String> = async {
         while let Some(chunk_result) = stream.next().await {
@@ -89,28 +89,6 @@ pub async fn download_with_progress(
                     format!("写入文件失败: {}", e)
                 }
             })?;
-
-            downloaded += chunk.len() as u64;
-
-            // 计算进度并发送事件（避免发送过于频繁）
-            let percent = if total_size > 0 {
-                ((downloaded * 100) / total_size).min(100) as u8
-            } else {
-                0
-            };
-
-            // 只在进度变化时发送事件
-            if percent != last_percent || downloaded == total_size {
-                last_percent = percent;
-                let _ = app.emit(
-                    "download-progress",
-                    DownloadProgress {
-                        downloaded,
-                        total: total_size,
-                        percent,
-                    },
-                );
-            }
         }
         Ok(())
     }
@@ -125,8 +103,49 @@ pub async fn download_with_progress(
     // 确保文件完全写入磁盘
     file.sync_all()
         .map_err(|e| format!("同步文件失败: {}", e))?;
+    drop(file); // 关闭文件句柄
 
-    Ok(temp_path.to_string_lossy().to_string())
+    // 复制到目标路径
+    copy_to_target(&app, &temp_path, &target_path)?;
+
+    // 清理临时文件
+    let _ = std::fs::remove_file(&temp_path);
+
+    Ok(())
+}
+
+/// 复制文件到目标路径（跨平台支持）
+/// Android 上支持 content:// URI，其他平台使用标准文件复制
+#[allow(unused_variables)]
+fn copy_to_target(app: &AppHandle, src: &std::path::Path, target: &str) -> Result<(), String> {
+    // 检测是否是 Android content:// URI
+    if target.starts_with("content://") {
+        // Android: 使用 android-fs 插件复制
+        #[cfg(target_os = "android")]
+        {
+            use tauri_plugin_android_fs::{AndroidFsExt, FileUri};
+
+            let android_fs = app.android_fs();
+            let src_uri = FileUri::from_path(src);
+            let dest_uri =
+                FileUri::from_uri(target).map_err(|e| format!("无效的目标路径: {}", e))?;
+
+            android_fs
+                .copy(&src_uri, &dest_uri)
+                .map_err(|e| format!("复制文件失败: {}", e))?;
+        }
+
+        #[cfg(not(target_os = "android"))]
+        {
+            // 非 Android 平台不应收到 content:// URI
+            return Err("不支持的目标路径格式".to_string());
+        }
+    } else {
+        // 其他平台：使用标准文件复制
+        std::fs::copy(src, target).map_err(|e| format!("复制文件失败: {}", e))?;
+    }
+
+    Ok(())
 }
 
 /// 简单下载命令（兼容旧接口，用于小文件）
@@ -135,14 +154,29 @@ pub async fn download_with_progress(
 pub async fn download_large_file(
     url: String,
     headers: Option<HashMap<String, String>>,
+    method: Option<String>,
+    body: Option<String>,
 ) -> Result<Vec<u8>, String> {
     let client = reqwest::Client::new();
-    let mut request = client.get(&url);
+
+    // 根据 method 构建请求（默认 GET）
+    let method_str = method.as_deref().unwrap_or("GET");
+    let mut request = match method_str.to_uppercase().as_str() {
+        "POST" => client.post(&url),
+        "PUT" => client.put(&url),
+        "DELETE" => client.delete(&url),
+        _ => client.get(&url),
+    };
 
     if let Some(hdrs) = headers {
         for (key, value) in hdrs {
             request = request.header(&key, &value);
         }
+    }
+
+    // 添加请求体（用于 POST 等）
+    if let Some(body_str) = body {
+        request = request.body(body_str);
     }
 
     let response = request
