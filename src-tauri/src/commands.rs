@@ -120,7 +120,7 @@ pub async fn download_with_progress(
 fn copy_to_target(app: &AppHandle, src: &std::path::Path, target: &str) -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
-        use tauri_plugin_android_fs::{AndroidFsExt, PublicDir};
+        use tauri_plugin_android_fs::{AndroidFsExt, PublicGeneralPurposeDir};
 
         let android_fs = app.android_fs();
 
@@ -128,7 +128,7 @@ fn copy_to_target(app: &AppHandle, src: &std::path::Path, target: &str) -> Resul
         // target 此时是相对路径 "Piney/filename"
         let new_file = android_fs
             .public_storage()
-            .create_new_file(None, PublicDir::Download, target, None)
+            .create_new_file(None, PublicGeneralPurposeDir::Download, target, None)
             .map_err(|e| format!("创建文件失败: {}", e))?;
 
         // 打开目标文件流
@@ -229,7 +229,7 @@ pub async fn write_to_android_public(
 ) -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
-        use tauri_plugin_android_fs::{AndroidFsExt, PublicDir};
+        use tauri_plugin_android_fs::{AndroidFsExt, PublicGeneralPurposeDir};
 
         let android_fs = app.android_fs();
 
@@ -239,7 +239,7 @@ pub async fn write_to_android_public(
             .public_storage()
             .create_new_file(
                 None, // 使用默认卷
-                PublicDir::Download,
+                PublicGeneralPurposeDir::Download,
                 &target_path,
                 None, // 让系统自动检测 mime type
             )
