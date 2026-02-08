@@ -32,3 +32,4 @@ reqwest = { version = "0.12", default-features = false, features = ["stream", "r
 futures-util = "0.3"
 uuid = { version = "1", features = ["v4"] }
 tauri-plugin-android-fs = "25"
+tauri-plugin-os = "2"

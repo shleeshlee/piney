@@ -536,7 +536,6 @@
 
         try {
             isExporting = true;
-            toast.info("正在打包下载...");
             const token = localStorage.getItem("auth_token");
 
             // 使用 downloadFile 处理流式下载 (POST)

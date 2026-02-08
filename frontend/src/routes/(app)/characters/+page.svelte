@@ -290,36 +290,6 @@
             await fetchCategories();
             editingCategory = null;
             toast.success("分类已更新");
-        } catch (e) {
-            toast.error("更新分类失败");
-        }
-    }
-
-    async function deleteCategory(id: string) {
-        const cat = categories.find((c) => c.id === id);
-        const cardCount = cards.filter((c: CardItem) => c.category_id === id).length;
-
-        if (cardCount > 0) {
-            const confirmed = confirm(
-                `分类"${cat?.name}"中包含 ${cardCount} 个角色，删除后这些角色将被移到"全部"分类。确认删除？`,
-            );
-            if (!confirmed) return;
-        }
-
-        try {
-            const token = localStorage.getItem("auth_token");
-            await fetch(`${API_BASE}/api/categories/${id}`, {
-                method: "DELETE",
-                headers: token ? { Authorization: `Bearer ${token}` } : {},
-            });
-            await fetchCategories();
-            await fetchCards();
-            toast.success("分类已删除");
-        } catch (e) {
-            toast.error("删除分类失败");
-        }
-    }
-
     async function toggleCoverBlur(card: CardItem) {
         try {
             const token = localStorage.getItem("auth_token");
@@ -439,7 +409,6 @@
             } else {
                 // Batch Export (URL Stream POST)
                 const count = selectedCardIds.size;
-                toast.info(`正在打包导出 (共 ${count} 个)...`);
                 const ids = Array.from(selectedCardIds);
                 
                 await downloadFile({

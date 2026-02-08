@@ -180,7 +180,6 @@ pub fn routes(db: DatabaseConnection, config: ConfigState) -> Router {
             get(theater::list_theaters).post(theater::create_theater),
         )
         .route("/theaters/import", post(theater::import_theaters))
-        .route("/theaters/export", get(theater::export_theaters))
         .route("/theaters/categories", get(theater::list_categories))
         .route("/theaters/batch", delete(theater::batch_delete_theaters))
         .route(
@@ -204,7 +203,9 @@ pub fn routes(db: DatabaseConnection, config: ConfigState) -> Router {
         .layer(CompressionLayer::new());
 
     // 2. 不需要压缩的路由 (流式传输)
-    let streaming_routes = Router::new().route("/backup/export", get(backup::export_backup));
+    let streaming_routes = Router::new()
+        .route("/backup/export", get(backup::export_backup))
+        .route("/theaters/export", get(theater::export_theaters));
 
     // 3. 备份导入路由 (使用 BackupState，包含 config)
     // 禁用默认 body 大小限制，允许上传任意大小的备份文件

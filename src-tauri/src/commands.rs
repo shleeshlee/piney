@@ -115,38 +115,29 @@ pub async fn download_with_progress(
 }
 
 /// 复制文件到目标路径（跨平台支持）
-/// Android 上支持 content:// URI，其他平台使用标准文件复制
+/// Android 公共存储路径会触发 MediaScanner 更新文件大小显示
 #[allow(unused_variables)]
 fn copy_to_target(app: &AppHandle, src: &std::path::Path, target: &str) -> Result<(), String> {
-    // 检测是否是 Android content:// URI
-    if target.starts_with("content://") {
-        // Android: 使用 android-fs 插件复制
-        #[cfg(target_os = "android")]
-        {
-            use tauri_plugin_android_fs::{AndroidFsExt, FileUri};
+    use std::path::Path;
 
-            let android_fs = app.android_fs();
-            let src_uri = FileUri::from_path(src);
+    let target_path = Path::new(target);
 
-            // 直接构造 FileUri，避免 from_path 自动添加 file:// 前缀
-            let dest_uri = FileUri {
-                uri: target.to_string(),
-                document_top_tree_uri: None,
-            };
-
-            android_fs
-                .copy(&src_uri, &dest_uri)
-                .map_err(|e| format!("复制文件失败: {}", e))?;
+    // 确保目标目录存在
+    if let Some(parent) = target_path.parent() {
+        if !parent.exists() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
         }
+    }
 
-        #[cfg(not(target_os = "android"))]
-        {
-            // 非 Android 平台不应收到 content:// URI
-            return Err("不支持的目标路径格式".to_string());
-        }
-    } else {
-        // 其他平台：使用标准文件复制
-        std::fs::copy(src, target).map_err(|e| format!("复制文件失败: {}", e))?;
+    // 使用标准文件复制
+    std::fs::copy(src, target).map_err(|e| format!("复制文件失败: {}", e))?;
+
+    // Android：触发 MediaScanner 扫描公共存储文件
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_android_fs::AndroidFsExt;
+        let android_fs = app.android_fs();
+        let _ = android_fs.scan_public_file(target_path);
     }
 
     Ok(())
@@ -203,36 +194,43 @@ pub async fn download_large_file(
     Ok(data)
 }
 
-/// 写入数据到目标路径（支持 Android content:// URI）
-/// 用于前端直接写入 Blob 内容，绕过 tauri-plugin-fs 的限制
+/// 写入数据到 Android 公共存储并触发媒体扫描
+/// 用于前端直接写入文件内容到公共存储目录（如 Download/Piney/）
+/// 写入后自动触发 MediaScanner，解决文件大小显示为 0B 的问题
 #[command]
 #[allow(unused_variables)]
-pub async fn write_to_content_uri(
+pub async fn write_to_android_public(
     app: AppHandle,
     target_path: String,
     data: Vec<u8>,
 ) -> Result<(), String> {
-    if target_path.starts_with("content://") {
-        #[cfg(target_os = "android")]
-        {
-            use tauri_plugin_android_fs::{AndroidFsExt, FileUri};
-            let android_fs = app.android_fs();
-            let dest_uri = FileUri {
-                uri: target_path,
-                document_top_tree_uri: None,
-            };
-            android_fs
-                .write(&dest_uri, &data)
-                .map_err(|e| format!("写入失败: {}", e))?;
+    #[cfg(target_os = "android")]
+    {
+        use std::path::Path;
+        use tauri_plugin_android_fs::AndroidFsExt;
+
+        // 确保父目录存在
+        let path = Path::new(&target_path);
+        if let Some(parent) = path.parent() {
+            if !parent.exists() {
+                std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
+            }
         }
 
-        #[cfg(not(target_os = "android"))]
-        {
-            return Err("不支持的路径格式".to_string());
-        }
-    } else {
+        // 写入文件
+        std::fs::write(&target_path, &data).map_err(|e| format!("写入失败: {}", e))?;
+
+        // 触发 MediaScanner 扫描，更新文件大小显示
+        let android_fs = app.android_fs();
+        let _ = android_fs.scan_public_file(path);
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
+        // 非 Android 平台使用标准写入
         std::fs::write(&target_path, &data).map_err(|e| format!("写入失败: {}", e))?;
     }
+
     Ok(())
 }
 

@@ -2,6 +2,7 @@
 import { isTauri, invoke } from '@tauri-apps/api/core';
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile, writeFile } from '@tauri-apps/plugin-fs';
+import { platform } from '@tauri-apps/plugin-os';
 import { toast } from 'svelte-sonner';
 
 interface DownloadOptions {
@@ -16,9 +17,23 @@ interface DownloadOptions {
     useStreaming?: boolean;
 }
 
+// Android 公共存储导出目录
+const ANDROID_EXPORT_DIR = '/storage/emulated/0/Download/Piney';
+
+/**
+ * 获取 Android 导出路径
+ * 目录创建由 Rust 端 write_to_android_public 命令处理
+ */
+function getAndroidExportPath(filename: string): string {
+    return `${ANDROID_EXPORT_DIR}/${filename}`;
+}
+
 /**
  * 统一的下载文件函数
  * 自动处理 Web 和 Tauri 环境下的下载逻辑
+ * 
+ * - Android：直接保存到 Download/Piney/ 目录
+ * - Win/Mac/Linux：弹出保存对话框让用户选择位置
  * 
  * 对于大文件 URL 下载，使用流式下载到临时文件，避免内存溢出
  */
@@ -27,23 +42,33 @@ export async function downloadFile(options: DownloadOptions) {
 
     if (isTauri()) {
         try {
-            // 1. 选择保存路径
-            const filePath = await save({
-                defaultPath: filename,
-                filters: type ? [{
-                    name: 'Files',
-                    extensions: [filename.split('.').pop() || 'tmp']
-                }] : undefined
-            });
+            const currentPlatform = platform();
+            let filePath: string;
 
-            if (!filePath) {
-                // 用户取消
-                return;
+            // 根据平台选择保存方式
+            if (currentPlatform === 'android') {
+                // Android：直接使用公共存储目录
+                filePath = getAndroidExportPath(filename);
+            } else {
+                // Win/Mac/Linux：弹出保存对话框
+                const selectedPath = await save({
+                    defaultPath: filename,
+                    filters: type ? [{
+                        name: 'Files',
+                        extensions: [filename.split('.').pop() || 'tmp']
+                    }] : undefined
+                });
+
+                if (!selectedPath) {
+                    // 用户取消
+                    return;
+                }
+                filePath = selectedPath;
             }
 
             const toastId = toast.loading("正在保存...");
 
-            // 2. 写入文件
+            // 写入文件
             if (content) {
                 // 处理内存内容
                 let dataBytes: Uint8Array;
@@ -56,14 +81,14 @@ export async function downloadFile(options: DownloadOptions) {
                     dataBytes = content;
                 }
 
-                // Android content:// URI 需要使用专用命令
-                if (filePath.startsWith('content://')) {
-                    await invoke('write_to_content_uri', {
+                // Android 使用专用写入命令（支持扫描更新文件大小显示）
+                if (currentPlatform === 'android') {
+                    await invoke('write_to_android_public', {
                         targetPath: filePath,
                         data: Array.from(dataBytes)
                     });
                 } else {
-                    // 非 Android 或普通路径使用 plugin-fs
+                    // 非 Android 使用 plugin-fs
                     if (typeof content === 'string') {
                         await writeTextFile(filePath, content);
                     } else {
@@ -86,7 +111,13 @@ export async function downloadFile(options: DownloadOptions) {
             }
 
             toast.dismiss(toastId);
-            toast.success("保存成功", { description: `已保存到: ${filePath}` });
+
+            // Android 显示更友好的提示
+            if (currentPlatform === 'android') {
+                toast.success("保存成功", { description: `已保存到: Download/Piney/${filename}` });
+            } else {
+                toast.success("保存成功", { description: `已保存到: ${filePath}` });
+            }
 
         } catch (e) {
             console.error("Save failed", e);
@@ -163,9 +194,11 @@ async function downloadSimple(
         body
     });
 
-    // 写入目标路径（支持 Android content:// URI）
-    if (targetPath.startsWith('content://')) {
-        await invoke('write_to_content_uri', {
+    // 根据平台选择写入方式
+    const currentPlatform = platform();
+    if (currentPlatform === 'android') {
+        // Android 使用专用命令（支持扫描更新文件大小）
+        await invoke('write_to_android_public', {
             targetPath,
             data
         });
