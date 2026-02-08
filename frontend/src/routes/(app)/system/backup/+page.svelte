@@ -18,35 +18,50 @@
     import { downloadFile } from "$lib/utils/download";
     import RestartOverlay from "$lib/components/RestartOverlay.svelte";
     import { isTauri, invoke } from "@tauri-apps/api/core";
+    import { backupExport } from "$lib/stores/backupExport";
     // import { relaunch } from "@tauri-apps/plugin-process"; // Soft restart now
 
     // --- 导出备份 ---
-    let isExporting = false;
     let isRestarting = false;
 
     async function handleExport() {
-        if (isExporting) return;
-        isExporting = true;
+        if ($backupExport.isExporting) return;
+        
+        const token = localStorage.getItem("auth_token");
+        if (!token) {
+            toast.error("未登录");
+            return;
+        }
+
+        // Web 环境：使用原生浏览器下载（流式，不占内存）
+        if (!isTauri()) {
+            toast.info("正在准备下载...");
+            // 通过 URL token 认证，浏览器原生下载
+            window.location.href = `${API_BASE}/api/backup/export?token=${encodeURIComponent(token)}`;
+            return;
+        }
+
+        // Tauri 环境：使用流式下载 + 进度显示
+        backupExport.startExport();
         
         try {
-            const token = localStorage.getItem("auth_token");
-            if (!token) {
-                toast.error("未登录");
-                isExporting = false;
-                return;
-            }
-
             await downloadFile({
                 filename: "piney_backup.piney",
-                url: `${API_BASE}/api/backup/export?token=${encodeURIComponent(token)}`,
-                type: "application/octet-stream"
+                url: `${API_BASE}/api/backup/export`,
+                type: "application/octet-stream",
+                fetchOptions: {
+                    headers: { Authorization: `Bearer ${token}` }
+                },
+                onProgress: (percent, downloaded, total) => {
+                    backupExport.setProgress(downloaded, total, percent);
+                }
             });
+            
+            backupExport.completeExport();
             
         } catch(e) {
             console.error(e);
-            toast.error("导出请求失败");
-        } finally {
-            isExporting = false;
+            backupExport.failExport(String(e));
         }
     }
 
@@ -259,9 +274,26 @@
                     </div>
 
                     <div class="flex justify-end pt-4">
-                        <Button size="lg" onclick={handleExport} class="w-full sm:w-auto font-bold text-lg px-8 shadow-lg shadow-primary/20">
-                            <Download class="mr-2 h-5 w-5" />
-                            立即备份数据
+                        <Button 
+                            size="lg" 
+                            onclick={handleExport} 
+                            disabled={$backupExport.isExporting}
+                            class={cn(
+                                "w-full sm:w-auto font-bold text-lg px-8 shadow-lg shadow-primary/20",
+                                $backupExport.isExporting && "opacity-80"
+                            )}
+                        >
+                            {#if $backupExport.isExporting}
+                                <div class="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-current border-t-transparent"></div>
+                                {#if $backupExport.progress > 0}
+                                    正在备份 {$backupExport.progress}%
+                                {:else}
+                                    正在备份...
+                                {/if}
+                            {:else}
+                                <Download class="mr-2 h-5 w-5" />
+                                立即备份数据
+                            {/if}
                         </Button>
                     </div>
                 </Card.Content>
