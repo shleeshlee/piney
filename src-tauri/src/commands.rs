@@ -127,8 +127,7 @@ fn copy_to_target(app: &AppHandle, src: &std::path::Path, target: &str) -> Resul
 
             let android_fs = app.android_fs();
             let src_uri = FileUri::from_path(src);
-            let dest_uri =
-                FileUri::from_uri(target).map_err(|e| format!("无效的目标路径: {}", e))?;
+            let dest_uri = FileUri::new(target.to_string());
 
             android_fs
                 .copy(&src_uri, &dest_uri)
