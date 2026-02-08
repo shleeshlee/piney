@@ -118,23 +118,53 @@ pub async fn download_with_progress(
 /// Android 公共存储路径会触发 MediaScanner 更新文件大小显示
 #[allow(unused_variables)]
 fn copy_to_target(app: &AppHandle, src: &std::path::Path, target: &str) -> Result<(), String> {
-    use std::path::Path;
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_android_fs::api::PublicDir;
+        use tauri_plugin_android_fs::AndroidFsExt;
 
-    let target_path = Path::new(target);
+        let android_fs = app.android_fs();
 
-    // 确保目标目录存在
-    if let Some(parent) = target_path.parent() {
-        if !parent.exists() {
-            std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
-        }
+        // 创建新文件 (自动创建目录)
+        // target 此时是相对路径 "Piney/filename"
+        let new_file = android_fs
+            .public_storage()
+            .create_new_file(None, PublicDir::Download, target, None)
+            .map_err(|e| format!("创建文件失败: {}", e))?;
+
+        // 打开目标文件流
+        let mut dest_file = android_fs
+            .open_file_writable(&new_file)
+            .map_err(|e| format!("打开目标文件失败: {}", e))?;
+
+        // 打开源文件
+        let mut src_file =
+            std::fs::File::open(src).map_err(|e| format!("打开源文件失败: {}", e))?;
+
+        // 流式复制
+        std::io::copy(&mut src_file, &mut dest_file).map_err(|e| format!("复制文件失败: {}", e))?;
+
+        Ok(())
     }
 
-    // 使用标准文件复制
-    std::fs::copy(src, target).map_err(|e| format!("复制文件失败: {}", e))?;
+    #[cfg(not(target_os = "android"))]
+    {
+        use std::path::Path;
 
-    // 注意：Android 公共存储文件会被 MediaScanner 自动索引
+        let target_path = Path::new(target);
 
-    Ok(())
+        // 确保目标目录存在
+        if let Some(parent) = target_path.parent() {
+            if !parent.exists() {
+                std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
+            }
+        }
+
+        // 使用标准文件复制
+        std::fs::copy(src, target).map_err(|e| format!("复制文件失败: {}", e))?;
+
+        Ok(())
+    }
 }
 
 /// 简单下载命令（兼容旧接口，用于小文件）
@@ -200,20 +230,27 @@ pub async fn write_to_android_public(
 ) -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
-        use std::path::Path;
+        use tauri_plugin_android_fs::api::PublicDir;
+        use tauri_plugin_android_fs::AndroidFsExt;
 
-        // 确保父目录存在
-        let path = Path::new(&target_path);
-        if let Some(parent) = path.parent() {
-            if !parent.exists() {
-                std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
-            }
-        }
+        let android_fs = app.android_fs();
 
-        // 写入文件
-        std::fs::write(&target_path, &data).map_err(|e| format!("写入失败: {}", e))?;
+        // 创建新文件 (如果父目录不存在会自动创建)
+        // target_path 此时应该是相对路径，例如 "Piney/image.png"
+        let new_file = android_fs
+            .public_storage()
+            .create_new_file(
+                None, // 使用默认卷
+                PublicDir::Download,
+                &target_path,
+                None, // 让系统自动检测 mime type
+            )
+            .map_err(|e| format!("创建文件失败: {}", e))?;
 
-        // 注意：Android 公共存储文件会被 MediaScanner 自动索引
+        // 写入数据
+        android_fs
+            .write(&new_file, &data)
+            .map_err(|e| format!("写入失败: {}", e))?;
     }
 
     #[cfg(not(target_os = "android"))]
