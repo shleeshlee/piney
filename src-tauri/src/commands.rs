@@ -120,8 +120,7 @@ pub async fn download_with_progress(
 fn copy_to_target(app: &AppHandle, src: &std::path::Path, target: &str) -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
-        use tauri_plugin_android_fs::api::PublicDir;
-        use tauri_plugin_android_fs::AndroidFsExt;
+        use tauri_plugin_android_fs::{AndroidFsExt, PublicDir};
 
         let android_fs = app.android_fs();
 
@@ -230,8 +229,7 @@ pub async fn write_to_android_public(
 ) -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
-        use tauri_plugin_android_fs::api::PublicDir;
-        use tauri_plugin_android_fs::AndroidFsExt;
+        use tauri_plugin_android_fs::{AndroidFsExt, PublicDir};
 
         let android_fs = app.android_fs();
 
