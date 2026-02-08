@@ -24,6 +24,7 @@ pub fn run() {
         .manage(server_control.clone())
         .invoke_handler(tauri::generate_handler![
             commands::download_large_file,
+            commands::download_with_progress,
             commands::restart_server
         ])
         .setup(move |_app| {

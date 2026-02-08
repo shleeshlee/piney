@@ -107,6 +107,55 @@
                     "path": "$PICTURE/**"
                 }
             ]
+        },
+        {
+            "identifier": "fs:allow-copy-file",
+            "allow": [
+                {
+                    "path": "$APPDATA/**"
+                },
+                {
+                    "path": "$APPLOCALDATA/**"
+                },
+                {
+                    "path": "$APPCACHE/**"
+                },
+                {
+                    "path": "$DOWNLOAD/**"
+                },
+                {
+                    "path": "$DOCUMENT/**"
+                },
+                {
+                    "path": "$DESKTOP/**"
+                },
+                {
+                    "path": "$HOME/**"
+                },
+                {
+                    "path": "$PICTURE/**"
+                },
+                {
+                    "path": "$VIDEO/**"
+                },
+                {
+                    "path": "$AUDIO/**"
+                },
+                {
+                    "path": "$PUBLIC/**"
+                },
+                {
+                    "path": "$TEMP/**"
+                }
+            ]
+        },
+        {
+            "identifier": "fs:allow-remove",
+            "allow": [
+                {
+                    "path": "$APPDATA/**"
+                }
+            ]
         }
     ]
 }
