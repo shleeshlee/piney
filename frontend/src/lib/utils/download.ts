@@ -25,7 +25,7 @@ const ANDROID_EXPORT_DIR = '/storage/emulated/0/Download/Piney';
  * 目录创建由 Rust 端 write_to_android_public 命令处理
  */
 function getAndroidExportPath(filename: string): string {
-    return `${ANDROID_EXPORT_DIR}/${filename}`;
+    return filename;
 }
 
 /**
