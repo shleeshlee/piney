@@ -1,7 +1,7 @@
 use futures_util::StreamExt;
 use std::collections::HashMap;
 use std::io::Write;
-use tauri::{command, AppHandle, Manager};
+use tauri::{command, AppHandle};
 
 /// 带进度的大文件下载命令
 ///
@@ -9,6 +9,7 @@ use tauri::{command, AppHandle, Manager};
 /// 然后复制到目标路径（支持 Android content:// URI）
 /// 最后删除临时文件
 #[command]
+#[allow(unused_variables)]
 pub async fn download_with_progress(
     app: AppHandle,
     url: String,
