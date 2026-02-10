@@ -2,7 +2,6 @@ use futures_util::StreamExt;
 use std::collections::HashMap;
 use std::io::Write;
 use tauri::{command, AppHandle, Manager};
-use uuid::Uuid;
 
 /// 带进度的大文件下载命令
 ///
@@ -50,120 +49,48 @@ pub async fn download_with_progress(
         return Err(format!("服务器返回错误: {}", response.status()));
     }
 
-    // 创建临时文件路径
-    let temp_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("无法获取应用数据目录: {}", e))?;
+    // 准备输出文件（根据平台选择写入方式）
+    #[cfg(target_os = "android")]
+    let mut writer = {
+        use tauri_plugin_android_fs::{AndroidFsExt, PublicGeneralPurposeDir};
+        let android_fs = app.android_fs();
+        let new_file = android_fs
+            .public_storage()
+            .create_new_file(None, PublicGeneralPurposeDir::Download, &target_path, None)
+            .map_err(|e| format!("创建文件失败: {}", e))?;
 
-    let temp_filename = format!("temp_download_{}.tmp", Uuid::new_v4());
-    let temp_path = temp_dir.join(&temp_filename);
+        android_fs
+            .open_file_writable(&new_file)
+            .map_err(|e| format!("打开文件失败: {}", e))?
+    };
 
-    // 确保目录存在
-    if !temp_dir.exists() {
-        std::fs::create_dir_all(&temp_dir).map_err(|e| format!("无法创建临时目录: {}", e))?;
-    }
-
-    // 创建临时文件
-    let mut file = std::fs::File::create(&temp_path).map_err(|e| {
-        if e.kind() == std::io::ErrorKind::PermissionDenied {
-            "存储权限不足，请检查应用权限设置".to_string()
-        } else if e.to_string().contains("No space") || e.to_string().contains("ENOSPC") {
-            "存储空间不足，请清理后重试".to_string()
-        } else {
-            format!("无法创建临时文件: {}", e)
+    #[cfg(not(target_os = "android"))]
+    let mut writer = {
+        let path = std::path::Path::new(&target_path);
+        if let Some(parent) = path.parent() {
+            if !parent.exists() {
+                std::fs::create_dir_all(parent).map_err(|e| format!("无法创建目录: {}", e))?;
+            }
         }
-    })?;
+        std::fs::File::create(&target_path).map_err(|e| format!("无法创建文件: {}", e))?
+    };
 
     // 流式读取并写入
     let mut stream = response.bytes_stream();
 
-    let result: Result<(), String> = async {
-        while let Some(chunk_result) = stream.next().await {
-            let chunk = chunk_result.map_err(|e| format!("下载中断: {}", e))?;
-
-            file.write_all(&chunk).map_err(|e| {
-                if e.to_string().contains("No space") || e.to_string().contains("ENOSPC") {
-                    "存储空间不足，下载已中断".to_string()
-                } else {
-                    format!("写入文件失败: {}", e)
-                }
-            })?;
-        }
-        Ok(())
-    }
-    .await;
-
-    // 如果下载失败，清理临时文件
-    if let Err(e) = result {
-        let _ = std::fs::remove_file(&temp_path);
-        return Err(e);
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("下载中断: {}", e))?;
+        writer
+            .write_all(&chunk)
+            .map_err(|e| format!("写入失败: {}", e))?;
     }
 
-    // 确保文件完全写入磁盘
-    file.sync_all()
+    writer.flush().map_err(|e| format!("刷新文件失败: {}", e))?;
+    writer
+        .sync_all()
         .map_err(|e| format!("同步文件失败: {}", e))?;
-    drop(file); // 关闭文件句柄
-
-    // 复制到目标路径
-    copy_to_target(&app, &temp_path, &target_path)?;
-
-    // 清理临时文件
-    let _ = std::fs::remove_file(&temp_path);
 
     Ok(())
-}
-
-/// 复制文件到目标路径（跨平台支持）
-/// Android 公共存储路径会触发 MediaScanner 更新文件大小显示
-#[allow(unused_variables)]
-fn copy_to_target(app: &AppHandle, src: &std::path::Path, target: &str) -> Result<(), String> {
-    #[cfg(target_os = "android")]
-    {
-        use tauri_plugin_android_fs::{AndroidFsExt, PublicGeneralPurposeDir};
-
-        let android_fs = app.android_fs();
-
-        // 创建新文件 (自动创建目录)
-        // target 此时是相对路径 "Piney/filename"
-        let new_file = android_fs
-            .public_storage()
-            .create_new_file(None, PublicGeneralPurposeDir::Download, target, None)
-            .map_err(|e| format!("创建文件失败: {}", e))?;
-
-        // 打开目标文件流
-        let mut dest_file = android_fs
-            .open_file_writable(&new_file)
-            .map_err(|e| format!("打开目标文件失败: {}", e))?;
-
-        // 打开源文件
-        let mut src_file =
-            std::fs::File::open(src).map_err(|e| format!("打开源文件失败: {}", e))?;
-
-        // 流式复制
-        std::io::copy(&mut src_file, &mut dest_file).map_err(|e| format!("复制文件失败: {}", e))?;
-
-        Ok(())
-    }
-
-    #[cfg(not(target_os = "android"))]
-    {
-        use std::path::Path;
-
-        let target_path = Path::new(target);
-
-        // 确保目标目录存在
-        if let Some(parent) = target_path.parent() {
-            if !parent.exists() {
-                std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
-            }
-        }
-
-        // 使用标准文件复制
-        std::fs::copy(src, target).map_err(|e| format!("复制文件失败: {}", e))?;
-
-        Ok(())
-    }
 }
 
 /// 简单下载命令（兼容旧接口，用于小文件）

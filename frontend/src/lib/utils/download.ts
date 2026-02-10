@@ -114,7 +114,7 @@ export async function downloadFile(options: DownloadOptions) {
 
             // Android 显示更友好的提示
             if (currentPlatform === 'android') {
-                toast.success("保存成功", { description: `已保存到: Download/Piney/${filename}` });
+                toast.success("保存成功", { description: `已保存到: Download/${filename}` });
             } else {
                 toast.success("保存成功", { description: `已保存到: ${filePath}` });
             }
