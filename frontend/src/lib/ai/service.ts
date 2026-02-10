@@ -107,10 +107,11 @@ export class AiService {
         const systemPrompt = PromptBuilder.getSystemPrompt(AiFeature.OVERVIEW, globalPrompt);
 
         // 3. 构造消息
-        const messages = [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt }
-        ];
+        const messages = [];
+        if (systemPrompt && systemPrompt.trim()) {
+            messages.push({ role: "system", content: systemPrompt });
+        }
+        messages.push({ role: "user", content: userPrompt });
 
         // 4. 调用后端
         const token = localStorage.getItem("auth_token");
@@ -174,10 +175,11 @@ export class AiService {
             const userPrompt = PromptBuilder.buildUserPrompt(feature, variables);
             const systemPrompt = PromptBuilder.getSystemPrompt(feature, globalPrompt);
 
-            const messages = [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: userPrompt }
-            ];
+            const messages = [];
+            if (systemPrompt && systemPrompt.trim()) {
+                messages.push({ role: "system", content: systemPrompt });
+            }
+            messages.push({ role: "user", content: userPrompt });
 
             const token = localStorage.getItem("auth_token");
             const response = await this.execute(feature, messages, token);
@@ -256,10 +258,11 @@ export class AiService {
         const userPrompt = PromptBuilder.buildUserPrompt(feature, variables);
         const systemPrompt = globalPrompt || "";
 
-        const messages = [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt }
-        ];
+        const messages = [];
+        if (systemPrompt && systemPrompt.trim()) {
+            messages.push({ role: "system", content: systemPrompt });
+        }
+        messages.push({ role: "user", content: userPrompt });
 
         try {
             const token = localStorage.getItem("auth_token");
@@ -322,10 +325,11 @@ export class AiService {
             const userPrompt = PromptBuilder.buildUserPrompt(feature, variables);
             const systemPrompt = globalPrompt || "";
 
-            const messages = [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: userPrompt }
-            ];
+            const messages = [];
+            if (systemPrompt && systemPrompt.trim()) {
+                messages.push({ role: "system", content: systemPrompt });
+            }
+            messages.push({ role: "user", content: userPrompt });
 
             const token = localStorage.getItem("auth_token");
             const response = await this.execute(feature, messages, token);
@@ -387,10 +391,11 @@ export class AiService {
             const feature = AiFeature.GENERATE_OPENING;
             const systemPrompt = globalPrompt || ""; // 开场白通常不需要特定 System Prompt，使用全局即可，或者可以为空
 
-            const messages = [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: userPrompt }
-            ];
+            const messages = [];
+            if (systemPrompt && systemPrompt.trim()) {
+                messages.push({ role: "system", content: systemPrompt });
+            }
+            messages.push({ role: "user", content: userPrompt });
 
             const token = localStorage.getItem("auth_token");
             const response = await this.execute(feature, messages, token);
@@ -501,10 +506,11 @@ export class AiService {
             // 前端样式生成不附加全局提示词
             const systemPrompt = SYSTEM_PROMPTS[feature] || '';
 
-            const messages = [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: userPrompt }
-            ];
+            const messages = [];
+            if (systemPrompt && systemPrompt.trim()) {
+                messages.push({ role: "system", content: systemPrompt });
+            }
+            messages.push({ role: "user", content: userPrompt });
 
             const token = localStorage.getItem("auth_token");
             const response = await this.execute(feature, messages, token);
