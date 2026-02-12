@@ -331,6 +331,7 @@ Before generating the final response, you must perform a self-check step-by-step
 3.  **Design the Hook**: Plan the sensory details and conflict using "In Medias Res".
 4.  **Vocabulary Scan**: Check your planned draft against the **Forbidden Vocabulary** list. If any banned word appears, replace it with a direct sensory description.
 5.  **Final Polish**: Ensure literal \\\`{{char}}\\\` and \\\`{{user}}\\\` placeholders are present.
+6.  **Dialogue Check**: STRICTLY CHECK that all spoken dialogue is enclosed in double quotes (\`""\`). If any dialogue is missing quotes, add them now.
 
 ## Output Rules
 
