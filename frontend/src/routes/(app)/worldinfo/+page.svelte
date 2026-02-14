@@ -125,7 +125,7 @@
     }
 </script>
 
-<div class="container mx-auto py-6 space-y-8">
+<div class="container mx-auto py-6 space-y-8 max-w-7xl">
     <!-- Header -->
     <div class="flex items-center justify-between">
         <div class="space-y-1">

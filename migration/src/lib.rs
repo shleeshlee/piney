@@ -6,6 +6,7 @@ pub use sea_orm_migration::prelude::*;
 
 mod m000001_v1_init;
 mod m000002_add_avatar_version;
+mod m000003_create_presets;
 
 pub struct Migrator;
 
@@ -15,6 +16,7 @@ impl MigratorTrait for Migrator {
         vec![
             Box::new(m000001_v1_init::Migration),
             Box::new(m000002_add_avatar_version::Migration),
+            Box::new(m000003_create_presets::Migration),
         ]
     }
 }

@@ -3740,6 +3740,7 @@ dependencies = [
  "jsonwebtoken",
  "migration",
  "once_cell",
+ "percent-encoding",
  "png",
  "rand 0.8.5",
  "regex",

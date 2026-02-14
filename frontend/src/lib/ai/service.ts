@@ -1,6 +1,6 @@
 import { API_BASE } from '$lib/api';
 import { PromptBuilder } from './promptBuilder';
-import { CHAR_GEN_NO_YAML, CHAR_GEN_YAML } from './templates';
+import { CHAR_GEN_NO_YAML, CHAR_GEN_YAML, PRESET_STUDY_PROMPT } from './templates';
 import { AiFeature, type PromptVariables } from './types';
 
 export class AiService {
@@ -544,6 +544,105 @@ export class AiService {
                 };
             } catch (e) {
                 console.error("Failed to parse AI response:", content);
+                throw new Error("AI 返回格式错误，无法解析 JSON");
+            }
+        } finally {
+            this.activeRequests--;
+        }
+    }
+
+    /**
+     * 分析预设（小皮书童）
+     * @param presetData 完整的预设数据对象，包含 prompts 和 prompt_order
+     */
+    static async analyzePreset(presetData: any): Promise<any> {
+        if (this.activeRequests >= this.MAX_CONCURRENT) {
+            throw new Error(`AI 请求队列已满 (${this.activeRequests}/${this.MAX_CONCURRENT})，请稍后再试`);
+        }
+
+        this.activeRequests++;
+        try {
+            const feature = AiFeature.PRESET_STUDY;
+
+            // === 预处理：根据 prompt_order 过滤 prompts ===
+            let prompts = presetData.prompts || [];
+            let promptOrder = presetData.prompt_order;
+
+            if (promptOrder && Array.isArray(promptOrder)) {
+                // 标准化 prompt_order 格式
+                // SillyTavern 嵌套格式: [{character_id, order: [{identifier, enabled}]}]
+                let flatOrder = promptOrder;
+                if (promptOrder.length > 0 && promptOrder[0]?.order && Array.isArray(promptOrder[0].order)) {
+                    flatOrder = promptOrder[0].order;
+                }
+
+                // 提取 prompt_order 中的 identifier 集合
+                const orderIdentifiers = new Set(
+                    flatOrder.map((o: any) => o.identifier).filter(Boolean)
+                );
+
+                // 过滤：仅保留在 prompt_order 中存在的条目
+                if (orderIdentifiers.size > 0) {
+                    prompts = prompts.filter((p: any) => {
+                        const id = p.identifier;
+                        return id && orderIdentifiers.has(id);
+                    });
+                }
+            }
+
+            // 构建预设 JSON 字符串
+            const presetJson = JSON.stringify(prompts, null, 2);
+
+            // === 构建完整 prompt ===
+            // 使用完整的 PRESET_STUDY_PROMPT 模板
+            // 重要：只替换最末尾 "# Input Data" 后的 {{preset_json}}
+            // 其他位置的 {{preset_json}} 保持原样（作为说明文字的一部分）
+            const lastPlaceholder = '# Input Data\n{{preset_json}}';
+            const fullPrompt = PRESET_STUDY_PROMPT.replace(
+                lastPlaceholder,
+                `# Input Data\n${presetJson}`
+            );
+
+            // 整个 prompt 作为 user 消息发送（不拆分 system/user）
+            const messages = [
+                { role: "user", content: fullPrompt }
+            ];
+
+            const token = localStorage.getItem("auth_token");
+            const response = await this.execute(feature, messages, token);
+
+            let content = response.choices?.[0]?.message?.content || "";
+            if (!content) {
+                throw new Error("AI 返回空内容");
+            }
+
+            // 预处理：移除 <think>/<thinking>/<cot> 标签及其内容
+            content = content.replace(/<think>[\s\S]*?<\/think>/gi, "");
+            content = content.replace(/<thinking>[\s\S]*?<\/thinking>/gi, "");
+            content = content.replace(/<cot>[\s\S]*?<\/cot>/gi, "");
+            content = content.trim();
+
+            // 清理 markdown 代码块
+            if (content.startsWith('```json')) {
+                content = content.slice(7);
+            } else if (content.startsWith('```')) {
+                content = content.slice(3);
+            }
+            if (content.endsWith('```')) {
+                content = content.slice(0, -3);
+            }
+            content = content.trim();
+
+            // 尝试提取 JSON 对象
+            const jsonMatch = content.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+                content = jsonMatch[0];
+            }
+
+            try {
+                return JSON.parse(content);
+            } catch (e) {
+                console.error("Failed to parse AI preset study response:", content);
                 throw new Error("AI 返回格式错误，无法解析 JSON");
             }
         } finally {

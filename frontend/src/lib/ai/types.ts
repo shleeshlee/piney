@@ -9,6 +9,7 @@ export enum AiFeature {
     GENERATE_WORLD_INFO = 'generate_world_info', // 生成世界书
     GENERATE_FRONTEND_STYLE = 'generate_frontend_style', // 生成前端样式
     GENERATE_OPENING = 'generate_opening', // 生成开场白
+    PRESET_STUDY = 'preset_study', // 预设分析（小皮书童）
 }
 
 export interface PromptVariables {

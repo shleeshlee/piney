@@ -10,6 +10,7 @@
 	import SquareCode from "@lucide/svelte/icons/square-code";
 	import Trash from "@lucide/svelte/icons/trash-2";
 	import Drama from "@lucide/svelte/icons/drama";
+	import SlidersHorizontal from "@lucide/svelte/icons/sliders-horizontal";
 </script>
 
 <script lang="ts">
@@ -25,6 +26,7 @@
 			{ title: "看板", url: "/", icon: LayoutDashboard },
 			{ title: "角色库", url: "/characters", icon: IdCard },
 			{ title: "小剧场", url: "/theaters", icon: Drama },
+			{ title: "预设", url: "/presets", icon: SlidersHorizontal },
 			{ title: "全局世界书", url: "/worldinfo", icon: BookUser },
 			{ title: "图库", url: "/gallery", icon: Images },
 			{ title: "导入", url: "/import", icon: Upload },

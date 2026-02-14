@@ -11,6 +11,7 @@ pub mod doctor_task;
 pub mod frontend_style;
 pub mod image;
 pub mod image_category;
+pub mod preset;
 pub mod quick_reply;
 pub mod setting;
 pub mod theater;
@@ -26,6 +27,7 @@ pub mod prelude {
     pub use super::frontend_style::Entity as FrontendStyle;
     pub use super::image::Entity as Image;
     pub use super::image_category::Entity as ImageCategory;
+    pub use super::preset::Entity as Preset;
     pub use super::quick_reply::Entity as QuickReply;
     pub use super::setting::Entity as Setting;
     pub use super::theater::Entity as Theater;

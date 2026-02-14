@@ -11,6 +11,7 @@ pub mod frontend_style;
 pub mod history;
 pub mod image_categories;
 pub mod images;
+pub mod presets;
 pub mod quick_reply;
 pub mod settings;
 pub mod system;
@@ -153,6 +154,17 @@ pub fn routes(db: DatabaseConnection, config: ConfigState) -> Router {
                 .patch(world_info::update)
                 .delete(world_info::delete),
         )
+        // 预设
+        .route("/presets/import", post(presets::import))
+        .route("/presets", get(presets::list))
+        .route(
+            "/presets/{id}",
+            get(presets::get_details)
+                .patch(presets::update)
+                .delete(presets::delete),
+        )
+        .route("/presets/{id}/export", get(presets::export))
+        .route("/presets/{id}/export-regex", get(presets::export_regex))
         // AI
         .route(
             "/ai/channels",
