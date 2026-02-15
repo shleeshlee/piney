@@ -476,7 +476,7 @@ Your goal is NOT to show off how sophisticated the technology is. Instead, you w
     - \`jailbreak\`: The final instruction at the very bottom — the "last word" before the AI responds.
 
 # Analysis Methodology
-1. **Draw a Structure Diagram**: Use Mermaid to visualize the module order so the user can instantly see "how information is fed to the AI".
+1. **Draw a Structure Diagram**: Use Mermaid to visualize the module order. **MANDATORY**: Use **subgraphs** to group related modules (e.g., 'subgraph System [System Prompts]', 'subgraph User [User Data]'). Use arrows (-->) to clearly show data flow.
 2. **Highlight Core Design Wins**: Find the smartest design choices in this preset. State the EFFECT first, then explain the mechanism.
 3. **Provide a Modding Guide**: Like a car modification manual — tell users "if you want to add feature X, install it HERE".
 4. **Quote Brilliant Snippets**: Pick out the most cleverly written lines and explain what makes them effective.
@@ -486,8 +486,13 @@ Your goal is NOT to show off how sophisticated the technology is. Instead, you w
 - **Format**: Valid JSON only. No Markdown code block wrappers.
 - **Language**: Simplified Chinese (zh-CN). All content values must be in Chinese.
 - **Mermaid Diagram Requirements**:
-  - The \`mermaid_code\` field must contain a valid Mermaid.js string (e.g., \`graph TD\\nA --> B\`). Use \`\\n\` for line breaks inside the JSON string.
-  - **STRICTLY FORBIDDEN**: Do NOT use any color, fill, or styling declarations. The following are all banned: \`style\`, \`fill\`, \`classDef\`, \`class\`, \`:::\`. Use only basic nodes and arrows. Keep it pure wireframe.
+  - The \`mermaid_code\` field must contain a valid Mermaid.js string. Use \`graph TD\`.
+  - **Structure Rules (MANDATORY)**:
+    - Use \`subgraph Title [Label] ... end\` to group logic layers (e.g., System, World, Persona, Chat).
+    - Use arrows (\`-->\`) to connect nodes/subgraphs to show the flow.
+    - Nodes should use descriptive names or labels (e.g., \`Main[Main Prompt]\`).
+  - **Style Rules**:
+    - **STRICTLY FORBIDDEN**: Do NOT use \`style\`, \`fill\`, \`classDef\`, \`class\`, \`:::\`. Pure wireframe only.
 
 # JSON Output Structure (Strict Schema)
 You must strictly follow this schema.
@@ -501,7 +506,7 @@ You must strictly follow this schema.
     "one_sentence_review": "String, One plain-language sentence summarizing the preset's core effect and strength"
   },
   "structure_blueprint": {
-    "mermaid_code": "String, Valid Mermaid.js flowchart. Use 'graph TD'. Nodes = module names (e.g., Main, Jailbreak). Arrows = info flow top-to-bottom. ABSOLUTELY NO style, fill, classDef, class, or ::: declarations. Pure wireframe only.",
+    "mermaid_code": "String, Valid Mermaid.js flowchart using 'graph TD'. MANDATORY: Use 'subgraph' to group modules (e.g., System, Character). Use '-->' arrows for flow. Nodes = module names. ABSOLUTELY NO style/fill/classDef. Pure wireframe.",
     "analysis": "String, Explain the structure like telling a story: first describe the overall EFFECT (how does the AI behave because of this layout?), then explain WHY this arrangement achieves that effect. Use metaphors generously, minimize jargon.",
     "pros_and_cons": "String, Evaluate from two angles: 'Strengths' (describe effects) and 'Watch-outs' (potential issues and workaround ideas)."
   },
