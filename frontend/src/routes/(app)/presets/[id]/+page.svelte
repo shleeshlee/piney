@@ -465,56 +465,76 @@
 
     async function handleImportRegex(event: Event) {
         const input = event.target as HTMLInputElement;
-        const file = input.files?.[0];
-        if (!file) return;
+        const files = input.files;
+        if (!files || files.length === 0) return;
 
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            try {
-                const content = e.target?.result as string;
-                let imported = JSON.parse(content);
-                
-                // 兼容不同格式：
-                // 1. 纯数组
-                // 2. ST 格式 { regex_scripts: [...] }
-                let scripts = [];
-                if (Array.isArray(imported)) {
-                    scripts = imported;
-                } else if (imported.regex_scripts && Array.isArray(imported.regex_scripts)) {
-                    scripts = imported.regex_scripts;
-                } else if (imported.scripts && Array.isArray(imported.scripts)) {
-                    scripts = imported.scripts;
-                } else if (typeof imported === "object" && imported !== null) {
-                    // 单个对象的情况
-                    scripts = [imported];
-                } else {
-                    toast.error("无法识别的正则格式");
-                    return;
-                }
+        const readFile = (file: File): Promise<any[]> => {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const content = e.target?.result as string;
+                        let imported = JSON.parse(content);
+                        let scripts: any[] = [];
 
-                // 处理导入的脚本，确保有 ID
-                const processedScripts = scripts.map((s: any) => ({
-                    ...s,
-                    id: s.id || generateUUID(),
-                    // 确保必要字段存在
-                    scriptName: s.scriptName || "导入的正则",
-                    findRegex: s.findRegex || "",
-                    replaceString: s.replaceString || "",
-                    placement: s.placement || [2],
-                    disabled: s.disabled || false,
-                }));
+                        // 兼容不同格式：
+                        // 1. 纯数组
+                        // 2. ST 格式 { regex_scripts: [...] }
+                        if (Array.isArray(imported)) {
+                            scripts = imported;
+                        } else if (imported.regex_scripts && Array.isArray(imported.regex_scripts)) {
+                            scripts = imported.regex_scripts;
+                        } else if (imported.scripts && Array.isArray(imported.scripts)) {
+                            scripts = imported.scripts;
+                        } else if (typeof imported === "object" && imported !== null) {
+                            // 单个对象的情况
+                            scripts = [imported];
+                        }
 
-                regexData = [...regexData, ...processedScripts];
-                checkDirty();
-                toast.success(`成功导入 ${processedScripts.length} 条正则`);
-            } catch (err) {
-                console.error(err);
-                toast.error("导入失败", { description: "文件格式错误" });
-            } finally {
-                input.value = "";
-            }
+                        // 处理导入的脚本，确保有 ID
+                        const processed = scripts.map((s: any) => ({
+                            ...s,
+                            id: s.id || generateUUID(),
+                            // 确保必要字段存在
+                            scriptName: s.scriptName || "导入的正则",
+                            findRegex: s.findRegex || "",
+                            replaceString: s.replaceString || "",
+                            placement: s.placement || [2],
+                            disabled: s.disabled || false,
+                        }));
+                        resolve(processed);
+                    } catch (err) {
+                        console.error(err);
+                        toast.error(`解析文件 ${file.name} 失败`);
+                        resolve([]);
+                    }
+                };
+                reader.onerror = () => {
+                    toast.error(`读取文件 ${file.name} 失败`);
+                    resolve([]);
+                };
+                reader.readAsText(file);
+            });
         };
-        reader.readAsText(file);
+
+        try {
+            const promises = Array.from(files).map(readFile);
+            const results = await Promise.all(promises);
+            const allScripts = results.flat();
+
+            if (allScripts.length > 0) {
+                regexData = [...regexData, ...allScripts];
+                checkDirty();
+                toast.success(`成功从 ${files.length} 个文件中导入 ${allScripts.length} 条正则`);
+            } else {
+                toast.warning("未能识别到有效的正则数据");
+            }
+        } catch (err) {
+            console.error(err);
+            toast.error("批量导入过程发生错误");
+        } finally {
+            input.value = "";
+        }
     }
 
     function addRegex() {
@@ -1154,6 +1174,7 @@
                     bind:this={fileInput}
                     type="file"
                     accept=".json"
+                    multiple
                     class="hidden"
                     onchange={handleImportRegex}
                 />
