@@ -167,20 +167,57 @@
 
             if (order && Array.isArray(order)) {
                 // 标准化 prompt_order 格式
-                // SillyTavern 格式可能是嵌套的：[{character_id, order: [{identifier, enabled}]}]
-                // 需要展平为 [{identifier, enabled}]
+                // SillyTavern 格式可能是嵌套的：[{character_id, order: [{identifier, enabled}]}, ...]
+                // 一个 prompt_order 数组下可能有多个 character_id 的 order
+                // 需要将所有 order 合并展平为 [{identifier, enabled}]
                 let flatOrder = order;
                 let _isNestedOrder = false;
-                let _orderCharacterId: number | undefined;
+                let _nestedOrderEntries: any[] = []; // 保存原始嵌套结构供 save 使用
                 if (order.length > 0 && order[0]?.order && Array.isArray(order[0].order)) {
-                    // 嵌套格式：取第一个元素的 order 数组
+                    // 嵌套格式：合并所有 character_id 的 order 数组
                     _isNestedOrder = true;
-                    _orderCharacterId = order[0].character_id;
-                    flatOrder = order[0].order;
+                    _nestedOrderEntries = order; // 保存完整的嵌套结构
+                    // 找到条目最多的 order 数组作为主排序依据
+                    let primaryEntry = order[0];
+                    for (const entry of order) {
+                        if (entry.order?.length > (primaryEntry.order?.length || 0)) {
+                            primaryEntry = entry;
+                        }
+                    }
+                    // 以主排序组为基础，合并其他组中不存在的条目
+                    const mergedMap = new Map<string, any>();
+                    const mergedList: any[] = [];
+                    // 先添加主排序组的所有条目（确定排列顺序）
+                    for (const item of primaryEntry.order) {
+                        if (!item.identifier) continue;
+                        const newItem = { ...item };
+                        mergedMap.set(item.identifier, newItem);
+                        mergedList.push(newItem);
+                    }
+                    // 再遍历其他组，更新 enabled 状态或追加新条目
+                    for (const entry of order) {
+                        if (entry === primaryEntry) continue;
+                        if (entry.order && Array.isArray(entry.order)) {
+                            for (const item of entry.order) {
+                                if (!item.identifier) continue;
+                                if (mergedMap.has(item.identifier)) {
+                                    // 重复条目：只更新 enabled 状态，位置不变
+                                    const existing = mergedMap.get(item.identifier);
+                                    existing.enabled = item.enabled;
+                                } else {
+                                    // 新条目：追加到末尾
+                                    const newItem = { ...item };
+                                    mergedMap.set(item.identifier, newItem);
+                                    mergedList.push(newItem);
+                                }
+                            }
+                        }
+                    }
+                    flatOrder = mergedList;
                 }
                 // 保存格式信息供 save 使用
                 presetData._isNestedOrder = _isNestedOrder;
-                presetData._orderCharacterId = _orderCharacterId;
+                presetData._nestedOrderEntries = _nestedOrderEntries;
 
                 // 根据 order 排序和设置 enabled
                 const promptMap = new Map(rawPrompts.map((p: any) => [p.identifier, p]));
@@ -370,12 +407,13 @@
 
             // 根据原始格式构造 prompt_order
             let savedOrder: any;
-            if (presetData._isNestedOrder) {
-                // SillyTavern 嵌套格式
-                savedOrder = [{
-                    character_id: presetData._orderCharacterId ?? 100001,
+            if (presetData._isNestedOrder && presetData._nestedOrderEntries?.length > 0) {
+                // SillyTavern 嵌套格式：保留原始的多 character_id 结构
+                // 将所有条目的 order 都更新为最新的 newOrder
+                savedOrder = presetData._nestedOrderEntries.map((entry: any) => ({
+                    character_id: entry.character_id,
                     order: newOrder,
-                }];
+                }));
             } else {
                 savedOrder = newOrder;
             }
