@@ -34,11 +34,35 @@
     let popoverContent = $state("");
     let popoverName = $state("");
 
-    // 根据 identifier 查找条目内容
+    // 根据 identifier 查找条目内容（多级模糊匹配）
     function lookupPromptContent(identifier: string) {
         if (!presetData?.prompts) return null;
-        const entry = presetData.prompts.find(
-            (p: any) => p.identifier === identifier || p.name === identifier
+        const id = identifier.trim();
+        if (!id) return null;
+
+        // 1. 精确匹配 identifier
+        let entry = presetData.prompts.find((p: any) => p.identifier === id);
+        if (entry) return entry;
+
+        // 2. 精确匹配 name
+        entry = presetData.prompts.find((p: any) => p.name === id);
+        if (entry) return entry;
+
+        // 3. 处理 AI 输出 "identifier(name)" 或 "name(identifier)" 等括号格式
+        const parenMatch = id.match(/^(.+?)\s*[\(（](.+?)[\)）]$/);
+        if (parenMatch) {
+            const [, part1, part2] = parenMatch;
+            entry = presetData.prompts.find((p: any) =>
+                p.identifier === part1 || p.identifier === part2 ||
+                p.name === part1 || p.name === part2
+            );
+            if (entry) return entry;
+        }
+
+        // 4. 模糊包含匹配（identifier 或 name 包含输入值，或输入值包含它们）
+        entry = presetData.prompts.find((p: any) =>
+            (p.identifier && (id.includes(p.identifier) || p.identifier.includes(id))) ||
+            (p.name && (id.includes(p.name) || p.name.includes(id)))
         );
         return entry || null;
     }
@@ -459,13 +483,13 @@
                                 </div>
                                 {#if mech.source_identifier}
                                     <button
-                                        class="inline-flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-opacity"
+                                        class="inline-flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-opacity max-w-[200px] shrink-0"
                                         onclick={() => openIdentifierPopover(mech.source_identifier)}
-                                        title="点击查看条目内容"
+                                        title={mech.source_identifier}
                                     >
-                                        <Badge variant="outline" class="font-mono text-xs border-primary/30 text-primary hover:bg-primary/5">
-                                            <FileText class="w-3 h-3 mr-1" />
-                                            {mech.source_identifier}
+                                        <Badge variant="outline" class="font-mono text-xs border-primary/30 text-primary hover:bg-primary/5 max-w-full">
+                                            <FileText class="w-3 h-3 mr-1 shrink-0" />
+                                            <span class="truncate">来源</span>
                                         </Badge>
                                     </button>
                                 {/if}
@@ -551,13 +575,13 @@
                                     </Badge>
                                     {#if snippet.source_identifier}
                                         <button
-                                            class="inline-flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-opacity"
+                                            class="inline-flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-opacity max-w-[200px] shrink-0"
                                             onclick={() => openIdentifierPopover(snippet.source_identifier)}
-                                            title="点击查看条目内容"
+                                            title={snippet.source_identifier}
                                         >
-                                            <Badge variant="outline" class="font-mono text-xs border-primary/30 text-primary hover:bg-primary/5">
-                                                <FileText class="w-3 h-3 mr-1" />
-                                                {snippet.source_identifier}
+                                            <Badge variant="outline" class="font-mono text-xs border-primary/30 text-primary hover:bg-primary/5 max-w-full">
+                                                <FileText class="w-3 h-3 mr-1 shrink-0" />
+                                                <span class="truncate">来源</span>
                                             </Badge>
                                         </button>
                                     {/if}

@@ -455,6 +455,7 @@ Your goal is NOT to show off how sophisticated the technology is. Instead, you w
   - ✅ Correct: "Token（可以理解为AI阅读时的'字数额度'）"
   - ❌ Wrong: "通过优化 Token 分配策略来提升 Context Window 的利用率"
 - 🧩 **Metaphors Over Abstraction**: Translate abstract concepts into everyday analogies. For example: injection order → "steps of a recipe"; Jailbreak → "the final ultimatum to the AI"; Context Window → "the AI's short-term memory capacity". Weave metaphors naturally into your explanations — do NOT list them as a glossary.
+- 🚫 **No Token Cost Evaluation**: Do NOT evaluate, mention, or discuss Token consumption, Token count, context window usage, or any Token/cost-related topics in your analysis. Focus exclusively on functional design quality, not resource costs.
 
 # Context & Input
 - **Input Source**: The raw preset data is in the variable \`{{preset_json}}\`.
@@ -508,12 +509,12 @@ You must strictly follow this schema.
   "structure_blueprint": {
     "mermaid_code": "String, Valid Mermaid.js flowchart using 'graph TD'. MANDATORY: Use 'subgraph' to group modules (e.g., System, Character). Use '-->' arrows for flow. Nodes = module names. ABSOLUTELY NO style/fill/classDef. Pure wireframe.",
     "analysis": "String, Explain the structure like telling a story: first describe the overall EFFECT (how does the AI behave because of this layout?), then explain WHY this arrangement achieves that effect. Use metaphors generously, minimize jargon.",
-    "pros_and_cons": "String, Evaluate from two angles: 'Strengths' (describe effects) and 'Watch-outs' (potential issues and workaround ideas)."
+    "pros_and_cons": "String, Evaluate from two angles: 'Strengths' (describe effects) and 'Watch-outs' (potential issues and workaround ideas). CRITICAL: Do NOT evaluate or mention Token consumption, Token count, context window usage, or any Token-related costs. Focus only on functional design quality."
   },
   "mechanism_breakdown": [
     {
       "name": "String, Give this mechanism a catchy, plain-language name (e.g., '防跑偏锁定术', '角色记忆强化器')",
-      "source_identifier": "String, The identifier or name of the source module",
+      "source_identifier": "String, MUST be the exact value of the 'identifier' field from the input data. Do NOT use the 'name' field. Do NOT combine identifier and name. Use the raw identifier string only.",
       "how_it_works": "String, Start with ONE sentence about the effect ('用了它之后，AI会...'), then explain the principle using a metaphor. If technical terms are needed, gloss them in parentheses.",
       "why_it_matters": "String, Explain what would go WRONG without this (contrast), so the user understands its value."
     }
@@ -531,7 +532,7 @@ You must strictly follow this schema.
   "brilliant_snippets": [
     {
       "excerpt": "String, Direct quote from the input preset",
-      "source_identifier": "String, The identifier or name of the module this snippet comes from",
+      "source_identifier": "String, MUST be the exact value of the 'identifier' field from the input data. Do NOT use the 'name' field. Do NOT combine identifier and name. Use the raw identifier string only.",
       "technique": "String, Name this technique in plain language (e.g., '反向心理暗示法', '场景沉浸锚点')",
       "analysis": "String, First state what EFFECT this text has on the AI, then explain why it's well-written."
     }
