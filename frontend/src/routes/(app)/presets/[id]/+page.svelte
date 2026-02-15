@@ -138,6 +138,7 @@
             item = await res.json();
             presetTitle = item.title;
             userNote = item.user_note || "";
+            version = item.version || "1.0.0";
             pipiStudy = item.pipi_study || "";
 
             breadcrumbs.set([

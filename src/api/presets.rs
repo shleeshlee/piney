@@ -110,12 +110,16 @@ pub async fn import(
             continue;
         }
 
-        // 提取标题（文件名去扩展名）
-        let title = std::path::Path::new(&file_name)
+        // 提取标题和版本号（文件名去扩展名，并尝试从中提取版本号）
+        let stem = std::path::Path::new(&file_name)
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("导入的预设")
             .to_string();
+
+        // 标题保持原样，仅提取版本号
+        let title = stem.clone();
+        let version = extract_version_from_filename(&stem);
 
         // 提取 extensions.regex_scripts 作为 regex_data
         let regex_data = json_data
@@ -145,7 +149,7 @@ pub async fn import(
             regex_data: Set(regex_data_str),
             user_note: Set(String::new()),
             pipi_study: Set(String::new()),
-            version: Set("1.0.0".to_string()),
+            version: Set(version),
             created_at: Set(now),
             updated_at: Set(now),
         };
@@ -376,4 +380,328 @@ pub async fn export_regex(
         ],
         pretty_json,
     ))
+}
+
+/// 从文件名中提取版本号（仅提取版本号，不修改标题）
+///
+/// 支持的格式：
+/// - 预设名称v1.2.3, 预设名称V1.2.3
+/// - 预设名称ver1.2.3, 预设名称VER1.2.3
+/// - 预设名称version1.2.3, 预设名称VERSION1.2.3
+/// - 预设名称v_1.23, 预设名称ver_1.23, 预设名称version_1.23
+/// - 预设名称_1.2.3, 预设名称 1.2.3, 预设名称-1.2.3
+/// - 预设名称1_2_3 (下划线分隔的版本)
+/// - 预设名称_1.2.3_ver, 预设名称_1.2.3_version
+/// - 预设名称_1.2.3_final (版本后有其他文字)
+/// - 1.2.3 (纯版本号)
+/// - 321-1.2.3 (数字名称 + 版本号)
+///
+/// 返回提取到的版本号，若未找到返回 "1.0.0"
+pub fn extract_version_from_filename(stem: &str) -> String {
+    let s = stem.trim();
+
+    // 策略1: 匹配显式版本标记 (version/ver/v，不区分大小写)
+    if let Some(ver) = find_version_with_marker(s) {
+        return ver;
+    }
+
+    // 策略2: 匹配尾部版本标记 (如 _ver, _version)
+    if let Some(ver) = find_trailing_ver_marker(s) {
+        return ver;
+    }
+
+    // 策略3: 匹配尾部点分隔版本号 (如 预设名称_1.2.3)
+    if let Some(ver) = find_trailing_dotted_version(s) {
+        return ver;
+    }
+
+    // 策略4: 匹配尾部下划线分隔版本号 (如 预设名称1_2_3)
+    if let Some(ver) = find_trailing_underscored_version(s) {
+        return ver;
+    }
+
+    // 策略5: 扫描中间位置的点分隔版本号 (如 预设名称_1.2.3_final)
+    // 需要前后都有分隔符
+    if let Some(ver) = find_embedded_dotted_version(s) {
+        return ver;
+    }
+
+    // 策略6: 整个文件名就是版本号 (如 1.2.3)
+    if is_valid_version(s) {
+        return s.to_string();
+    }
+
+    // 没有匹配到版本号，使用默认值
+    "1.0.0".to_string()
+}
+
+/// 版本标记列表（按长度从长到短排列，确保 "version" 优先于 "ver" 优先于 "v"）
+const VERSION_MARKERS: &[&str] = &["version", "ver", "v"];
+
+/// 尾部版本标记列表
+const TRAILING_VERSION_MARKERS: &[&str] =
+    &["_version", "-version", " version", "_ver", "-ver", " ver"];
+
+/// 策略1: 显式版本标记
+fn find_version_with_marker(s: &str) -> Option<String> {
+    let lower = s.to_lowercase();
+
+    for marker in VERSION_MARKERS {
+        if let Some(pos) = lower.rfind(marker) {
+            let after_marker = pos + marker.len();
+
+            // 先尝试从标记后面提取版本号（如 v1.2.3, ver1.2.3）
+            if after_marker < s.len() {
+                let rest = &s[after_marker..];
+                // 跳过可选的 _ - 空格分隔符
+                let version_start =
+                    if rest.starts_with('_') || rest.starts_with('-') || rest.starts_with(' ') {
+                        1
+                    } else {
+                        0
+                    };
+
+                if version_start < rest.len() {
+                    let version_part = &rest[version_start..];
+
+                    if version_part.starts_with(|c: char| c.is_ascii_digit()) {
+                        // 提取版本号（数字和点组成，遇到其他字符停止）
+                        let version_end = version_part
+                            .find(|c: char| !c.is_ascii_digit() && c != '.')
+                            .unwrap_or(version_part.len());
+
+                        let raw_version = &version_part[..version_end];
+                        let version = normalize_version(raw_version);
+
+                        if is_valid_version(&version) {
+                            return Some(version);
+                        }
+                    }
+                }
+            }
+
+            // 标记后面没有有效版本号，尝试从标记前面提取（如 0.0521ver, 1.2.3version）
+            if pos > 0 {
+                let before = &s[..pos];
+                if let Some(ver) = find_trailing_dotted_version(before) {
+                    return Some(ver);
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// 策略2: 尾部版本标记
+fn find_trailing_ver_marker(s: &str) -> Option<String> {
+    let lower = s.to_lowercase();
+
+    for marker in TRAILING_VERSION_MARKERS {
+        if lower.ends_with(marker) {
+            let without_marker = &s[..s.len() - marker.len()];
+            let trimmed = without_marker.trim_end();
+
+            if let Some(ver) = find_trailing_dotted_version(trimmed) {
+                return Some(ver);
+            }
+            if let Some(ver) = find_trailing_underscored_version(trimmed) {
+                return Some(ver);
+            }
+        }
+    }
+
+    None
+}
+
+/// 策略3: 尾部点分隔版本号
+fn find_trailing_dotted_version(s: &str) -> Option<String> {
+    let len = s.len();
+    let mut i = len;
+    let mut dot_count = 0;
+    let mut has_digit = false;
+
+    while i > 0 {
+        let c = s[..i].chars().last().unwrap();
+        let c_len = c.len_utf8();
+
+        if c.is_ascii_digit() {
+            has_digit = true;
+            i -= c_len;
+        } else if c == '.' && has_digit {
+            dot_count += 1;
+            has_digit = false;
+            i -= c_len;
+        } else {
+            break;
+        }
+    }
+
+    if dot_count == 0 {
+        return None;
+    }
+
+    let version_str = &s[i..];
+    if !version_str.ends_with(|c: char| c.is_ascii_digit()) {
+        return None;
+    }
+
+    let version = normalize_version(version_str);
+    if !is_valid_version(&version) {
+        return None;
+    }
+
+    if i == 0 {
+        return Some(version);
+    }
+
+    let before = s[..i].chars().last().unwrap();
+    if before == '_' || before == ' ' || before == '-' || !before.is_ascii() {
+        return Some(version);
+    }
+
+    None
+}
+
+/// 策略4: 尾部下划线分隔版本号
+fn find_trailing_underscored_version(s: &str) -> Option<String> {
+    let len = s.len();
+    let mut i = len;
+    let mut underscore_count = 0;
+    let mut has_digit = false;
+
+    while i > 0 {
+        let c = s[..i].chars().last().unwrap();
+        let c_len = c.len_utf8();
+
+        if c.is_ascii_digit() {
+            has_digit = true;
+            i -= c_len;
+        } else if c == '_' && has_digit {
+            underscore_count += 1;
+            has_digit = false;
+            i -= c_len;
+        } else {
+            break;
+        }
+    }
+
+    if underscore_count == 0 {
+        return None;
+    }
+
+    let raw = &s[i..];
+    if !raw.starts_with(|c: char| c.is_ascii_digit()) {
+        return None;
+    }
+
+    let version = normalize_version(raw);
+    if !is_valid_version(&version) {
+        return None;
+    }
+
+    if i == 0 {
+        return Some(version);
+    }
+
+    let before = s[..i].chars().last().unwrap();
+    if !before.is_ascii_digit() {
+        return Some(version);
+    }
+
+    None
+}
+
+/// 策略5: 扫描字符串中间的点分隔版本号
+/// 处理如 预设名称_1.2.3_final, 预设名称-1.2.3-beta 等情况
+fn find_embedded_dotted_version(s: &str) -> Option<String> {
+    let chars: Vec<char> = s.chars().collect();
+    let len = chars.len();
+    let mut i = 0;
+
+    while i < len {
+        // 找到一个分隔符后面的数字位置
+        let digit_pos = if i == 0 && chars[0].is_ascii_digit() {
+            // 字符串开头就是数字
+            0
+        } else if is_version_boundary(chars[i]) && i + 1 < len && chars[i + 1].is_ascii_digit() {
+            // 分隔符后面跟数字
+            i + 1
+        } else {
+            i += 1;
+            continue;
+        };
+
+        // 如果不在开头，前面必须有分隔符或非ASCII字符
+        if digit_pos > 0 && !is_version_boundary(chars[digit_pos - 1]) {
+            i += 1;
+            continue;
+        }
+
+        // 从这里开始尝试提取版本号
+        let mut j = digit_pos;
+        let mut dot_count = 0;
+        let mut last_was_dot = false;
+
+        while j < len {
+            if chars[j].is_ascii_digit() {
+                last_was_dot = false;
+                j += 1;
+            } else if chars[j] == '.' && !last_was_dot && j > digit_pos {
+                dot_count += 1;
+                last_was_dot = true;
+                j += 1;
+            } else {
+                break;
+            }
+        }
+
+        // 版本号必须以数字结尾，且至少有一个点
+        if dot_count > 0 && !last_was_dot {
+            // 版本号后面必须是分隔符、非ASCII字符或字符串结尾
+            if j == len || is_separator(chars[j]) || !chars[j].is_ascii() {
+                let version_str: String = chars[digit_pos..j].iter().collect();
+                let version = normalize_version(&version_str);
+                if is_valid_version(&version) {
+                    return Some(version);
+                }
+            }
+        }
+
+        // 跳过已扫描的部分，避免无限循环
+        i = if j > i + 1 { j } else { i + 1 };
+    }
+
+    None
+}
+
+/// 判断字符是否为版本号分隔符
+fn is_separator(c: char) -> bool {
+    c == '_' || c == ' ' || c == '-'
+}
+
+/// 判断字符是否可以作为版本号的边界（分隔符或非ASCII字符如中文）
+fn is_version_boundary(c: char) -> bool {
+    is_separator(c) || !c.is_ascii()
+}
+
+/// 将下划线分隔的版本号转换为点分隔
+fn normalize_version(raw: &str) -> String {
+    let trimmed = raw.trim_matches(|c: char| c == '_' || c == '.' || c == ' ');
+    if trimmed.contains('_') && !trimmed.contains('.') {
+        trimmed.replace('_', ".")
+    } else {
+        trimmed.to_string()
+    }
+}
+
+/// 检查是否为有效的版本号格式（至少两段数字用点分隔）
+fn is_valid_version(s: &str) -> bool {
+    let parts: Vec<&str> = s.split('.').collect();
+    if parts.len() < 2 {
+        return false;
+    }
+    parts
+        .iter()
+        .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
 }
