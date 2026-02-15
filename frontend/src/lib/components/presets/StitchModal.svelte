@@ -171,11 +171,39 @@
             rawPrompts.splice(magicIndex, 1);
         }
 
-        // 展平 order
+        // 展平 order（支持多 character_id 嵌套格式）
         let flatOrder: any[] = [];
         if (order) {
              if (order.length > 0 && order[0]?.order && Array.isArray(order[0].order)) {
-                 flatOrder = order[0].order;
+                 // 嵌套格式：合并所有 character_id 的 order，以条目最多的为主排序
+                 let primaryEntry = order[0];
+                 for (const entry of order) {
+                     if (entry.order?.length > (primaryEntry.order?.length || 0)) {
+                         primaryEntry = entry;
+                     }
+                 }
+                 const mergedMap = new Map<string, any>();
+                 const mergedList: any[] = [];
+                 for (const item of primaryEntry.order) {
+                     if (!item.identifier) continue;
+                     mergedMap.set(item.identifier, { ...item });
+                     mergedList.push(mergedMap.get(item.identifier));
+                 }
+                 for (const entry of order) {
+                     if (entry === primaryEntry) continue;
+                     if (entry.order && Array.isArray(entry.order)) {
+                         for (const item of entry.order) {
+                             if (!item.identifier) continue;
+                             if (mergedMap.has(item.identifier)) {
+                                 mergedMap.get(item.identifier).enabled = item.enabled;
+                             } else {
+                                 mergedMap.set(item.identifier, { ...item });
+                                 mergedList.push(mergedMap.get(item.identifier));
+                             }
+                         }
+                     }
+                 }
+                 flatOrder = mergedList;
              } else {
                  flatOrder = order;
              }
@@ -255,10 +283,7 @@
     }
 
     async function stitchToRemote(newItems: any[], insertIndex: number) {
-        // 需要构造完整的 PATCH 数据
-        // selectedPresetDetails 是原始的详情数据
-        // targetItems 是我们解析出来的顺序列表
-        
+
         // 1. 更新 prompts 列表：插入到锚点对应位置
         let rawPrompts = selectedPresetDetails.data?.prompts || [];
         // 确保是数组
@@ -289,45 +314,94 @@
         
         let flatOrder: any[] = [];
         let isNested = false;
-        let charId = 100001;
+        let nestedOrderEntries: any[] = []; // 保存完整嵌套结构
+        let primaryCharacterId: number | undefined;
 
         if (order && Array.isArray(order)) {
              if (order.length > 0 && order[0]?.order && Array.isArray(order[0].order)) {
                  isNested = true;
-                 charId = order[0].character_id;
-                 flatOrder = [...order[0].order];
+                 nestedOrderEntries = JSON.parse(JSON.stringify(order)); // 深拷贝
+                 // 找到主排序组
+                 let primaryEntry = order[0];
+                 for (const entry of order) {
+                     if (entry.order?.length > (primaryEntry.order?.length || 0)) {
+                         primaryEntry = entry;
+                     }
+                 }
+                 primaryCharacterId = primaryEntry.character_id;
+                 // 合并所有 order
+                 const mergedMap = new Map<string, any>();
+                 const mergedList: any[] = [];
+                 for (const item of primaryEntry.order) {
+                     if (!item.identifier) continue;
+                     mergedMap.set(item.identifier, { ...item });
+                     mergedList.push(mergedMap.get(item.identifier));
+                 }
+                 for (const entry of order) {
+                     if (entry === primaryEntry) continue;
+                     if (entry.order && Array.isArray(entry.order)) {
+                         for (const item of entry.order) {
+                             if (!item.identifier) continue;
+                             if (mergedMap.has(item.identifier)) {
+                                 mergedMap.get(item.identifier).enabled = item.enabled;
+                             } else {
+                                 mergedMap.set(item.identifier, { ...item });
+                                 mergedList.push(mergedMap.get(item.identifier));
+                             }
+                         }
+                     }
+                 }
+                 flatOrder = mergedList;
              } else {
-                 flatOrder = [...order];
+                  flatOrder = [...order];
              }
         }
         
         // 在 flatOrder 中插入引用
-        // 注意：targetItems 是已经排序后的列表，我们需要找到锚点在 flatOrder 中的位置
-        // 或者更简单：我们直接把新条目的引用插到 targetItems 的对应位置，然后重新生成整个 order
-        // 这样比较稳妥，因为 visual order 就是用户看到的 order
-        
-        // 构造新的 visual order list (即新的 prompt_order)
-        // targetItems 已经是过滤后的 active items
         const currentVisualOrder = [...targetItems];
         
-        // 确保新条目是 enabled
+        // 新条目保留原始 enabled 状态
         const preparedNewItems = newItems.map(p => ({
             ...p,
-            enabled: true,
+            enabled: p.enabled !== false,
         }));
 
         currentVisualOrder.splice(insertIndex, 0, ...preparedNewItems);
         
-        // 映射回 prompt_order 格式
+        // 映射回 prompt_order 格式，保留原始 enabled 状态
         const newFlatOrder = currentVisualOrder.map(p => ({
             identifier: p.identifier,
-            enabled: true // 只要在 prompt_order 中，就是 enabled
+            enabled: p.enabled !== false,
         }));
         
-        // 还原嵌套
-        const finalOrder = isNested 
-            ? [{ character_id: charId, order: newFlatOrder }] 
-            : newFlatOrder;
+        // 还原嵌套结构
+        let finalOrder: any;
+        if (isNested && nestedOrderEntries.length > 0) {
+            // 保留原始的多 character_id 结构
+            const enabledMap = new Map<string, boolean>();
+            for (const item of newFlatOrder) {
+                enabledMap.set(item.identifier, item.enabled);
+            }
+            finalOrder = nestedOrderEntries.map((entry: any) => {
+                if (entry.character_id === primaryCharacterId) {
+                    // 主排序组：替换为新顺序
+                    return { character_id: entry.character_id, order: newFlatOrder };
+                } else {
+                    // 其他组：保留原始结构，仅同步 enabled
+                    return {
+                        character_id: entry.character_id,
+                        order: (entry.order || []).map((item: any) => ({
+                            ...item,
+                            enabled: enabledMap.has(item.identifier)
+                                ? enabledMap.get(item.identifier)
+                                : item.enabled,
+                        })),
+                    };
+                }
+            });
+        } else {
+            finalOrder = newFlatOrder;
+        }
             
         // 构造 Patch Payload（清理内部标记 _inOrder）
         const cleanedPrompts = updatedPrompts.map((p: any) => {
@@ -350,23 +424,6 @@
     }
 
     async function stitchToLocal(newItems: any[], insertIndex: number) {
-        // 本地比较简单：直接更新 currentItems 对应的内存数据，然后调 onSave
-        // 但注意：onSave 是全量保存，所以我们需要修改的是传递给 StitchModal 的 currentItems 引用吗？
-        // 不，currentItems 是 prop。我们需要通过 onSave 回调通知父组件“我改了数据，你保存一下”。
-        // 但 onSave 只是无参调用。
-        // 所以我们要在父组件里暴露一个方法来“插入数据”。
-        // 或者，我们约定：onSave Before，我们直接通过 mutations 修改父组件传来的对象？
-        // 在 Svelte 5 中，如果 currentItems 是 $state，我们可以直接改？
-        // 不太行，最好还是通过 callback 传回新数据。
-        
-        // 这里我们可以 hack 一下：
-        // 该组件是 modal，不应该直接操纵父组件过深的数据。
-        // 我们可以 emit 一个事件，或者调用专用的 onStitch(items, index)
-        // 但为了少改父组件，我们利用 onSave。
-        // 等等，用户之前的 Plan 里说： "应用将选中条目...插入到当前 presetData...自动触发 save()"
-        // 这意味着我们需要访问父组件的 presetData。
-        
-        // 简单点：我们在 props 里加一个 onLocalInsert(newItems, index)
         await onSave({ newItems, insertIndex }); 
         toast.success("成功缝合到本地并保存！");
     }

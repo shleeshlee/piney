@@ -91,8 +91,12 @@
     // 脏状态
     let isDirty = $state(false);
     let lastSaved = $state(0);
-    let originalState = "";
+    let originalState = $state("");
 
+    // prompt_order 内部元数据（不挂载到 presetData 上，避免污染保存数据）
+    let _isNestedOrder = $state(false);
+    let _nestedOrderEntries: any[] = $state([]);
+    let _primaryCharacterId: number | undefined = $state(undefined); // 条目最多的 character_id
     // 未保存更改守卫
     const unsaved = useUnsavedChanges(() => isDirty);
 
@@ -171,12 +175,10 @@
                 // 一个 prompt_order 数组下可能有多个 character_id 的 order
                 // 需要将所有 order 合并展平为 [{identifier, enabled}]
                 let flatOrder = order;
-                let _isNestedOrder = false;
-                let _nestedOrderEntries: any[] = []; // 保存原始嵌套结构供 save 使用
                 if (order.length > 0 && order[0]?.order && Array.isArray(order[0].order)) {
                     // 嵌套格式：合并所有 character_id 的 order 数组
                     _isNestedOrder = true;
-                    _nestedOrderEntries = order; // 保存完整的嵌套结构
+                    _nestedOrderEntries = JSON.parse(JSON.stringify(order)); // 深拷贝保存完整嵌套结构
                     // 找到条目最多的 order 数组作为主排序依据
                     let primaryEntry = order[0];
                     for (const entry of order) {
@@ -184,6 +186,7 @@
                             primaryEntry = entry;
                         }
                     }
+                    _primaryCharacterId = primaryEntry.character_id;
                     // 以主排序组为基础，合并其他组中不存在的条目
                     const mergedMap = new Map<string, any>();
                     const mergedList: any[] = [];
@@ -214,10 +217,10 @@
                         }
                     }
                     flatOrder = mergedList;
+                } else {
+                    _isNestedOrder = false;
+                    _nestedOrderEntries = [];
                 }
-                // 保存格式信息供 save 使用
-                presetData._isNestedOrder = _isNestedOrder;
-                presetData._nestedOrderEntries = _nestedOrderEntries;
 
                 // 根据 order 排序和设置 enabled
                 const promptMap = new Map(rawPrompts.map((p: any) => [p.identifier, p]));
@@ -407,21 +410,39 @@
 
             // 根据原始格式构造 prompt_order
             let savedOrder: any;
-            if (presetData._isNestedOrder && presetData._nestedOrderEntries?.length > 0) {
+            if (_isNestedOrder && _nestedOrderEntries.length > 0) {
                 // SillyTavern 嵌套格式：保留原始的多 character_id 结构
-                // 将所有条目的 order 都更新为最新的 newOrder
-                savedOrder = presetData._nestedOrderEntries.map((entry: any) => ({
-                    character_id: entry.character_id,
-                    order: newOrder,
-                }));
+                // 主排序组（条目最多的）：用 newOrder 替换，反映用户的排序调整
+                // 其他组（如系统标记组）：只更新 enabled 状态，保留原始结构和顺序
+                const enabledMap = new Map<string, boolean>();
+                for (const p of allPrompts) {
+                    if (p.identifier) {
+                        enabledMap.set(p.identifier, p.enabled !== false);
+                    }
+                }
+                savedOrder = _nestedOrderEntries.map((entry: any) => {
+                    if (entry.character_id === _primaryCharacterId) {
+                        // 主排序组：使用用户在界面上调整后的新顺序
+                        return {
+                            character_id: entry.character_id,
+                            order: newOrder,
+                        };
+                    } else {
+                        // 其他组：保留原始结构，仅同步 enabled 状态
+                        return {
+                            character_id: entry.character_id,
+                            order: (entry.order || []).map((item: any) => ({
+                                ...item,
+                                enabled: enabledMap.has(item.identifier)
+                                    ? enabledMap.get(item.identifier)
+                                    : item.enabled,
+                            })),
+                        };
+                    }
+                });
             } else {
                 savedOrder = newOrder;
             }
-
-            // 修正：prompt_order 是与 prompts 同级的属性，不应 push 到 prompts 数组中
-            // promptsToSave.push({
-            //     prompt_order: savedOrder
-            // });
 
             // 更新 presetData.prompts
             presetData.prompts = promptsToSave;
