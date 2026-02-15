@@ -484,6 +484,9 @@
                     scripts = imported.regex_scripts;
                 } else if (imported.scripts && Array.isArray(imported.scripts)) {
                     scripts = imported.scripts;
+                } else if (typeof imported === "object" && imported !== null) {
+                    // 单个对象的情况
+                    scripts = [imported];
                 } else {
                     toast.error("无法识别的正则格式");
                     return;
