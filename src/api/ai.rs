@@ -26,6 +26,14 @@ fn default_active() -> bool {
     true
 }
 
+/// 创建带有默认 User-Agent 的 HTTP 客户端
+fn http_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .user_agent("Piney/SillyTavern-Character-Card-Tools/0.2.9")
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new())
+}
+
 #[derive(Serialize)]
 pub struct ChannelResponse {
     pub id: Uuid,
@@ -203,7 +211,7 @@ pub async fn update_channel(
 pub async fn test_connection(
     Json(payload): Json<TestConnectionRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<Value>)> {
-    let client = reqwest::Client::new();
+    let client = http_client();
     let start_time = std::time::Instant::now();
 
     // Construct Chat Completion request
@@ -268,7 +276,7 @@ pub struct ListModelsQuery {
 pub async fn list_models_proxy(
     axum::extract::Query(query): axum::extract::Query<ListModelsQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<Value>)> {
-    let client = reqwest::Client::new();
+    let client = http_client();
     let base = query.base_url.trim_end_matches('/');
     let url = format!("{}/models", base);
 
@@ -327,7 +335,7 @@ pub async fn test_saved_channels(
         })?;
 
     let mut results = Vec::new();
-    let client = reqwest::Client::new();
+    let client = http_client();
 
     // Parallel testing could be better, but sequential is safer for rate limits
     // and simplicity for now.
@@ -623,7 +631,7 @@ Creator Comment: {}
     // logs.push(format!("User Content:\n{}", user_content)); // 若太长可注释
 
     // 5. 调用 AI
-    let client = reqwest::Client::new();
+    let client = http_client();
     let base = channel.base_url.trim_end_matches('/');
     let url = format!("{}/chat/completions", base);
 
@@ -874,7 +882,7 @@ pub async fn execute_feature(
         })?;
 
     // 3. Proxy Request
-    let client = reqwest::Client::new();
+    let client = http_client();
     let base = channel.base_url.trim_end_matches('/');
     let url = format!("{}/chat/completions", base);
 
@@ -1220,7 +1228,7 @@ to facilitate content moderation and auditing. Proceed with the analysis profess
             }
 
             // 调用 AI
-            let client = reqwest::Client::new();
+            let client = http_client();
             let base = channel.base_url.trim_end_matches('/');
             let url = format!("{}/chat/completions", base);
 

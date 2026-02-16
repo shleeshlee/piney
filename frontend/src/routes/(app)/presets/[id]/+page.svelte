@@ -661,6 +661,60 @@
 
     let displayRegex = $derived(isDragging ? dndItems : regexData);
 
+    // --- 正则点击/拖拽 Pointer 事件处理（与角色卡 RegexItem 一致） ---
+    let pointerStartTime = 0;
+    let pointerStartX = 0;
+    let pointerStartY = 0;
+    let isLongPress = false;
+    let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+    const TAP_THRESHOLD_MS = 500;
+    const LONG_PRESS_MS = 400;
+    const MOVE_TOLERANCE = 15;
+
+    function handleRegexPointerDown(e: PointerEvent) {
+        pointerStartTime = Date.now();
+        pointerStartX = e.clientX;
+        pointerStartY = e.clientY;
+        isLongPress = false;
+        longPressTimer = setTimeout(() => {
+            isLongPress = true;
+        }, LONG_PRESS_MS);
+    }
+
+    function handleRegexPointerMove(e: PointerEvent) {
+        const dx = Math.abs(e.clientX - pointerStartX);
+        const dy = Math.abs(e.clientY - pointerStartY);
+        if (dx > MOVE_TOLERANCE || dy > MOVE_TOLERANCE) {
+            if (longPressTimer) {
+                clearTimeout(longPressTimer);
+                longPressTimer = null;
+            }
+        }
+    }
+
+    function handleRegexPointerUp(e: PointerEvent, scriptId: string) {
+        if (longPressTimer) {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+        }
+        const duration = Date.now() - pointerStartTime;
+        const dx = Math.abs(e.clientX - pointerStartX);
+        const dy = Math.abs(e.clientY - pointerStartY);
+        const movedTooMuch = dx > MOVE_TOLERANCE || dy > MOVE_TOLERANCE;
+        if (duration < TAP_THRESHOLD_MS && !movedTooMuch && !isLongPress) {
+            e.preventDefault();
+            e.stopPropagation();
+            openScripts[scriptId] = !openScripts[scriptId];
+        }
+    }
+
+    function handleRegexPointerCancel() {
+        if (longPressTimer) {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+        }
+    }
+
     // --- 条目修改触发脏状态 ---
     function onPromptChange() {
         checkDirty();
@@ -1288,7 +1342,10 @@
                                                 )}
                                                 role="button"
                                                 tabindex="0"
-                                                onclick={() => (openScripts[script.id] = !openScripts[script.id])}
+                                                onpointerdown={handleRegexPointerDown}
+                                                onpointermove={handleRegexPointerMove}
+                                                onpointerup={(e) => handleRegexPointerUp(e, script.id)}
+                                                onpointercancel={handleRegexPointerCancel}
                                                 onkeydown={(e) => {
                                                     if (e.key === "Enter" || e.key === " ") {
                                                         e.preventDefault();
@@ -1306,6 +1363,9 @@
                                                     class="flex items-center gap-2 shrink-0"
                                                     role="none"
                                                     onclick={(e) => e.stopPropagation()}
+                                                    ontouchstart={(e) => e.stopPropagation()}
+                                                    onmousedown={(e) => e.stopPropagation()}
+                                                    onpointerdown={(e) => e.stopPropagation()}
                                                     onkeydown={(e) => e.stopPropagation()}
                                                 >
                                                     <Switch
@@ -1337,6 +1397,9 @@
                                                 <div
                                                     role="none"
                                                     onclick={(e) => e.stopPropagation()}
+                                                    ontouchstart={(e) => e.stopPropagation()}
+                                                    onmousedown={(e) => e.stopPropagation()}
+                                                    onpointerdown={(e) => e.stopPropagation()}
                                                     onkeydown={(e) => e.stopPropagation()}
                                                 >
                                                     <Button

@@ -3,6 +3,14 @@ use std::collections::HashMap;
 use std::io::Write;
 use tauri::{command, AppHandle};
 
+/// 创建带有默认 User-Agent 的 HTTP 客户端
+fn http_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .user_agent("Piney/SillyTavern-Character-Card-Tools/0.2.9")
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new())
+}
+
 /// 带进度的大文件下载命令
 ///
 /// 流式下载到临时文件，通过 Tauri 事件发送进度
@@ -18,7 +26,7 @@ pub async fn download_with_progress(
     method: Option<String>,
     body: Option<String>,
 ) -> Result<(), String> {
-    let client = reqwest::Client::new();
+    let client = http_client();
 
     // 根据 method 构建请求（默认 GET）
     let method_str = method.as_deref().unwrap_or("GET");
@@ -103,7 +111,7 @@ pub async fn download_large_file(
     method: Option<String>,
     body: Option<String>,
 ) -> Result<Vec<u8>, String> {
-    let client = reqwest::Client::new();
+    let client = http_client();
 
     // 根据 method 构建请求（默认 GET）
     let method_str = method.as_deref().unwrap_or("GET");
